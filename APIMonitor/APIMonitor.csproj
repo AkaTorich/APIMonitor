@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <ProjectGuid>{1A1A1A1A-1111-1111-1111-111111111111}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>APIMonitor</RootNamespace>
+    <AssemblyName>APIMonitor</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WarningLevel>4</WarningLevel>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <LangVersion>7.3</LangVersion>
+    <!-- Use modern PackageReference NuGet flow even though we're on legacy
+         csproj, so we can pull Microsoft.Windows.SDK.Win32Metadata. -->
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\bin\Debug\</OutputPath>
+    <IntermediateOutputPath>..\obj\$(MSBuildProjectName)\Debug\</IntermediateOutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\bin\Release\</OutputPath>
+    <IntermediateOutputPath>..\obj\$(MSBuildProjectName)\Release\</IntermediateOutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+  </ItemGroup>
+
+  <!--
+    Microsoft.Windows.SDK.Win32Metadata ships the Windows.Win32.winmd file
+    that describes every Win32 API: module, calling convention, parameter
+    names and types. We resolve the metadata at runtime via the standard
+    System.Reflection.Metadata reader (no source-generator step) and feed
+    it into the DataGrid formatter so a wrapper-logged "kernel32!CreateFileW
+    (0x..., 0x...)" line gets shown as "CreateFileW(LPCWSTR lpFileName,
+    DWORD dwDesiredAccess, ...)".
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.Win32Metadata" Version="63.0.31-preview" GeneratePathProperty="true">
+      <ExcludeAssets>all</ExcludeAssets>
+      <IncludeAssets>none</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+    <!--
+      Microsoft.Diagnostics.Tracing.TraceEvent: managed wrapper around ETW
+      (TDH + EventSource). We use it to listen on the
+      "Microsoft-Windows-Kernel-Audit-API-Calls" provider and inspect the
+      stack trace of every NtOpenThread / NtSetContextThread call - if the
+      caller didn't come through ntdll's syscall stub we flag the syscall
+      as direct/indirect. See Services\WeirdSyscallDetector.cs.
+    -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.10" />
+  </ItemGroup>
+
+  <!-- Copy the .winmd next to the exe so the runtime resolver can find it. -->
+  <Target Name="CopyWin32Metadata" BeforeTargets="Build" Condition="'$(PkgMicrosoft_Windows_SDK_Win32Metadata)' != ''">
+    <ItemGroup>
+      <_Winmd Include="$(PkgMicrosoft_Windows_SDK_Win32Metadata)\Windows.Win32.winmd" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_Winmd)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="MainWindow.xaml.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Model\ApiEvent.cs" />
+    <Compile Include="Model\EventStore.cs" />
+    <Compile Include="ViewModel\ApiEventVm.cs" />
+    <Compile Include="ViewModel\BatchObservableCollection.cs" />
+    <Compile Include="ViewModel\MainViewModel.cs" />
+    <Compile Include="ViewModel\RelayCommand.cs" />
+    <Compile Include="Services\PipeServer.cs" />
+    <Compile Include="Services\SharedRingReader.cs" />
+    <Compile Include="Services\TargetMemoryReader.cs" />
+    <Compile Include="Services\WeirdSyscallDetector.cs" />
+    <Compile Include="Services\DriverClient.cs" />
+    <Compile Include="Services\Launcher.cs" />
+    <Compile Include="Services\Injector.cs" />
+    <Compile Include="Services\ServiceManager.cs" />
+    <Compile Include="Native\NativeMethods.cs" />
+    <Compile Include="Native\ApimonProto.cs" />
+    <Compile Include="Native\Win32MetadataResolver.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <None Include="app.manifest" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <!--
+    Copy the kernel driver next to APIMonitor.exe. ContinueOnError=true so a
+    missing .sys (no WDK installed) doesn't break iterating on the GUI alone.
+  -->
+  <!-- All native projects already drop their artifacts into ..\bin\$(Configuration)\, no copy needed. -->
+  <Target Name="DeleteCsharpJunk" AfterTargets="Build">
+    <!-- C# debug build leaves *.xml docs, *.exe.manifest etc - keep only what's actually used. -->
+    <ItemGroup>
+      <_Junk Include="$(OutputPath)*.xml" />
+    </ItemGroup>
+    <Delete Files="@(_Junk)" ContinueOnError="true" />
+  </Target>
+</Project>
