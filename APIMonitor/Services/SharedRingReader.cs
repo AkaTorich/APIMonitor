@@ -133,19 +133,16 @@ namespace APIMonitor.Services
 
                     string callerPath = (_mem != null) ? _mem.ResolveModulePath(callerAddr) : null;
 
-                    /* Drop events that originated inside our own Hook DLL
-                     * (the in-process self-filter using g_self_base isn't
-                     * always reliable - e.g. when ImpResolve runs before
-                     * the loader fixed up the load address). Doing it on
-                     * the consumer side guarantees the noise is gone. */
-                    if (callerPath != null)
+                    /* Drop everything that doesn't have a resolvable caller
+                     * module (those are typically internal kernel32/CRT
+                     * calls whose return address landed in pages we
+                     * couldn't resolve), and everything that DID resolve
+                     * to a noise module. Net result: only calls coming
+                     * from the target's own modules survive. */
+                    if (string.IsNullOrEmpty(callerPath) || IsNoiseCaller(callerPath))
                     {
-                        if (callerPath.IndexOf("APIHook64.dll", StringComparison.OrdinalIgnoreCase) >= 0
-                            || callerPath.IndexOf("APIHook32.dll", StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            read_seq++;
-                            continue;
-                        }
+                        read_seq++;
+                        continue;
                     }
 
                     string mod = "?", fn = "?";
@@ -178,6 +175,36 @@ namespace APIMonitor.Services
 
                 try { await Task.Delay(10, ct).ConfigureAwait(false); } catch { return; }
             }
+        }
+
+        /// <summary>
+        /// True if the caller is internal noise: our own Hook DLL, the C
+        /// runtime, or any module living under System32/SysWOW64/WinSxS
+        /// (those are system-internal calls, e.g. CoreMessaging.dll calling
+        /// kernel32!TlsGetValue - the user wants to see what *their* code
+        /// is doing, not how Windows internally bookkeeps itself).
+        /// </summary>
+        private static bool IsNoiseCaller(string path)
+        {
+            string lower = path.ToLowerInvariant();
+
+            // Hook DLL.
+            if (lower.EndsWith("\\apihook64.dll") || lower.EndsWith("\\apihook32.dll"))
+                return true;
+
+            // Any system folder = system-to-system call.
+            if (lower.IndexOf("\\system32\\")  >= 0) return true;
+            if (lower.IndexOf("\\syswow64\\")  >= 0) return true;
+            if (lower.IndexOf("\\winsxs\\")    >= 0) return true;
+
+            // Just in case CRT lives somewhere else (private deployment).
+            int slash = lower.LastIndexOfAny(new[] { '\\', '/' });
+            string file = (slash >= 0) ? lower.Substring(slash + 1) : lower;
+            if (file.StartsWith("ucrtbase"))   return true;
+            if (file.StartsWith("msvcrt"))     return true;
+            if (file.StartsWith("vcruntime"))  return true;
+            if (file.StartsWith("msvcp"))      return true;
+            return false;
         }
 
         private static string ZString(byte[] b)

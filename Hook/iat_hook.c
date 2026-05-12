@@ -94,10 +94,18 @@ CommonHandler(ULONG_PTR slot_id, ULONG_PTR *regs, ULONG_PTR *stackArgs, ULONG_PT
     if (g_in_init) return;
     if (g_log_disabled) return;
 
-    /* Drop events whose caller is inside our own Hook DLL - those come
-     * from our logger / patcher itself and just spam the monitor. */
-    if (g_self_base != 0 &&
-        caller_retaddr >= g_self_base && caller_retaddr < g_self_end) return;
+    /* Drop events whose caller is in a "noise" module: our Hook DLL, the
+     * C runtime, or any System32/SysWOW64/WinSxS DLL (system-to-system
+     * internal traffic). Linear scan over <= 256 ranges is fine - the
+     * trampoline path is already heavy. */
+    {
+        LONG n = g_noise_count;
+        for (LONG i = 0; i < n; i++) {
+            if (caller_retaddr >= g_noise_ranges[i].base &&
+                caller_retaddr <  g_noise_ranges[i].end)
+                return;
+        }
+    }
 
     if (g_tlsInHook != TLS_OUT_OF_INDEXES) {
         if (GuardGet(g_tlsInHook) != NULL) return;
