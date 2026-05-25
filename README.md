@@ -1,5 +1,7 @@
 # APIMonitor
 
+![APIMonitor](screenshot.png)
+
 A Windows API call tracer. It launches a target application, injects a lightweight hook into it, and shows every Windows API call the app makes — with the function name, its arguments, and its return value — live in a dark "terminal" GUI. Works for both 32-bit and 64-bit targets, locally or on a remote machine.
 
 ## Features
