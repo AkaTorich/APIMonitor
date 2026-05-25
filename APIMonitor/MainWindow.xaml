@@ -65,27 +65,26 @@
                             VerticalAlignment="Stretch"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="MinButton"
-                            Content="—"
                             Width="40" MinWidth="0"
                             BorderThickness="0,0,1,0"
                             Padding="0"
-                            FontSize="14"
-                            Click="MinButton_Click"/>
+                            Click="MinButton_Click">
+                        <Image Source="{StaticResource IconMin}" Width="14" Height="14" Stretch="Uniform"/>
+                    </Button>
                     <Button x:Name="MaxButton"
-                            Content="□"
                             Width="40" MinWidth="0"
                             BorderThickness="0,0,1,0"
                             Padding="0"
-                            FontSize="14"
-                            Click="MaxButton_Click"/>
+                            Click="MaxButton_Click">
+                        <Image Source="{StaticResource IconMax}" Width="14" Height="14" Stretch="Uniform"/>
+                    </Button>
                     <Button x:Name="CloseButton"
-                            Content="✕"
                             Width="40" MinWidth="0"
                             BorderThickness="0"
                             Padding="0"
-                            FontSize="14"
-                            Foreground="{StaticResource AlertBrush}"
-                            Click="CloseButton_Click"/>
+                            Click="CloseButton_Click">
+                        <Image Source="{StaticResource IconClose}" Width="13" Height="13" Stretch="Uniform"/>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -117,13 +116,21 @@
                           Text="{Binding TargetPath, UpdateSourceTrigger=PropertyChanged}"
                           IsEnabled="{Binding CanEditTarget}"/>
                 <Button Grid.Column="2"
-                        Content="Browse..."
                         Margin="0,0,6,0"
-                        Command="{Binding BrowseCommand}"/>
+                        Command="{Binding BrowseCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource IconOpen}" Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform"/>
+                        <TextBlock Text="Browse..." VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
                 <Button Grid.Column="3"
-                        Content="{Binding RunStopText}"
                         Margin="0,0,12,0"
-                        Command="{Binding RunStopCommand}"/>
+                        Command="{Binding RunStopCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource IconRun}" Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform"/>
+                        <TextBlock Text="{Binding RunStopText}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
 
                 <Label Grid.Column="4" Content="Filter:" VerticalAlignment="Center"/>
                 <ComboBox Grid.Column="5"
@@ -132,9 +139,13 @@
                           ItemsSource="{Binding FilterOptions}"
                           SelectedItem="{Binding SelectedFilter}"/>
                 <Button Grid.Column="6"
-                        Content="Clear"
                         Margin="6,0,0,0"
-                        Command="{Binding ClearCommand}"/>
+                        Command="{Binding ClearCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource IconTrash}" Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform"/>
+                        <TextBlock Text="Clear" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
 
                 <Label Grid.Column="7" Content="Search:" Margin="12,0,0,0" VerticalAlignment="Center"/>
                 <TextBox Grid.Column="8"
@@ -161,10 +172,15 @@
                 <TextBox Width="70" Margin="6,0,0,0" VerticalContentAlignment="Center"
                          IsEnabled="{Binding RemoteEnabled}"
                          Text="{Binding RemotePort, UpdateSourceTrigger=PropertyChanged}"/>
-                <Button Content="Browse VM..." Margin="12,0,0,0"
+                <Button Margin="12,0,0,0"
                         IsEnabled="{Binding RemoteEnabled}"
                         Command="{Binding BrowseRemoteCommand}"
-                        ToolTip="Browse the remote machine's filesystem and pick a .exe"/>
+                        ToolTip="Browse the remote machine's filesystem and pick a .exe">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource IconFolder}" Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform"/>
+                        <TextBlock Text="Browse VM..." VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
                 <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Opacity="0.7"
                            Text="(run ApimonRelay.exe elevated on the remote machine first)"/>
             </StackPanel>

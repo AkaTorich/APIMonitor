@@ -39,8 +39,9 @@
                     </StackPanel>
                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal"
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Button Content="✕" Width="40" MinWidth="0" BorderThickness="0" Padding="0"
-                                FontSize="14" Foreground="{StaticResource AlertBrush}" Click="Close_Click"/>
+                        <Button Width="40" MinWidth="0" BorderThickness="0" Padding="0" Click="Close_Click">
+                            <Image Source="{StaticResource IconClose}" Width="13" Height="13" Stretch="Uniform"/>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -52,8 +53,18 @@
                     BorderThickness="0,1,0,0"
                     Padding="8">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="Open"   Margin="0,0,8,0" Click="Open_Click"/>
-                    <Button Content="Cancel" Click="Cancel_Click"/>
+                    <Button Margin="0,0,8,0" Click="Open_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource IconOpen}" Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform"/>
+                            <TextBlock Text="Open" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Click="Cancel_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource IconClose}" Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform"/>
+                            <TextBlock Text="Cancel" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Border>
 
@@ -72,7 +83,12 @@
                     <Label Grid.Column="0" Content="Path:" VerticalAlignment="Center"/>
                     <TextBox x:Name="PathBox" Grid.Column="1" Margin="6,0,6,0"
                              IsReadOnly="True" VerticalContentAlignment="Center"/>
-                    <Button Grid.Column="2" Content="Up" Click="Up_Click"/>
+                    <Button Grid.Column="2" Click="Up_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource IconUp}" Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform"/>
+                            <TextBlock Text="Up" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </Grid>
             </Border>
 

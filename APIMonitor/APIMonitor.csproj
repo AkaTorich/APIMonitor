@@ -142,6 +142,17 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="app.manifest" />
+    <!-- Source SVGs the button icons were hand-translated from (AkaTorich-Icons).
+         Not used at runtime - icons are native DrawingImage resources in App.xaml. -->
+    <None Include="Icons\run.svg" />
+    <None Include="Icons\stop.svg" />
+    <None Include="Icons\folder.svg" />
+    <None Include="Icons\open-file.svg" />
+    <None Include="Icons\trash.svg" />
+    <None Include="Icons\close.svg" />
+    <None Include="Icons\nav_up.svg" />
+    <None Include="Icons\minimize.svg" />
+    <None Include="Icons\maximize.svg" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 

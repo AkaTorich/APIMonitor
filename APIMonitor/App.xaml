@@ -318,5 +318,144 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="0,1,0,0"/>
         </Style>
+
+        <!-- ============================================================
+             Button icons. Native WPF vector resources (DrawingImage),
+             hand-translated from the AkaTorich-Icons SVGs in Icons\ - no
+             third-party SVG library, no PNG, pure XAML geometry.
+             ============================================================ -->
+
+        <!-- run / play (green) -->
+        <DrawingImage x:Key="IconRun">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Geometry="M2.5,4.2 H7.5 V2.3 L13.2,8 L7.5,13.7 V11.8 H2.5 Z">
+                    <GeometryDrawing.Brush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Offset="0"    Color="#7EE085"/>
+                            <GradientStop Offset="0.45" Color="#3EAF3E"/>
+                            <GradientStop Offset="1"    Color="#1E7A1E"/>
+                        </LinearGradientBrush>
+                    </GeometryDrawing.Brush>
+                    <GeometryDrawing.Pen><Pen Brush="#155C15" Thickness="0.55" LineJoin="Round"/></GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- stop (red rounded square) -->
+        <DrawingImage x:Key="IconStop">
+            <DrawingImage.Drawing>
+                <GeometryDrawing>
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="2.5,2.5,19,19" RadiusX="3.5" RadiusY="3.5"/>
+                    </GeometryDrawing.Geometry>
+                    <GeometryDrawing.Brush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Offset="0" Color="#FF6060"/><GradientStop Offset="1" Color="#AA0000"/>
+                        </LinearGradientBrush>
+                    </GeometryDrawing.Brush>
+                </GeometryDrawing>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- folder (closed, yellow) -->
+        <DrawingImage x:Key="IconFolder">
+            <DrawingImage.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Geometry="M1,7 H23 V20 A2,2 0 0 1 21,22 H3 A2,2 0 0 1 1,20 Z">
+                        <GeometryDrawing.Brush><RadialGradientBrush Center="0.35,0.28" GradientOrigin="0.35,0.28" RadiusX="0.65" RadiusY="0.65"><GradientStop Offset="0" Color="#FFE040"/><GradientStop Offset="1" Color="#BB7700"/></RadialGradientBrush></GeometryDrawing.Brush>
+                    </GeometryDrawing>
+                    <GeometryDrawing Geometry="M1,10 H23 V20 A2,2 0 0 1 21,22 H3 A2,2 0 0 1 1,20 Z">
+                        <GeometryDrawing.Brush><RadialGradientBrush Center="0.35,0.28" GradientOrigin="0.35,0.28" RadiusX="0.65" RadiusY="0.65"><GradientStop Offset="0" Color="#FFCC00"/><GradientStop Offset="1" Color="#FF8800"/></RadialGradientBrush></GeometryDrawing.Brush>
+                    </GeometryDrawing>
+                    <GeometryDrawing Geometry="M1,7 V6 A2,2 0 0 1 3,4 H8 L10.5,7 Z">
+                        <GeometryDrawing.Brush><RadialGradientBrush Center="0.35,0.28" GradientOrigin="0.35,0.28" RadiusX="0.65" RadiusY="0.65"><GradientStop Offset="0" Color="#FFE040"/><GradientStop Offset="1" Color="#BB7700"/></RadialGradientBrush></GeometryDrawing.Brush>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- open file (folder open) -->
+        <DrawingImage x:Key="IconOpen">
+            <DrawingImage.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Geometry="M1.5,3.5 H6 L7.5,5 H14.5 V13 Q14.5,13.5 14,13.5 H2 Q1.5,13.5 1.5,13 Z">
+                        <GeometryDrawing.Brush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Offset="0" Color="#FFE082"/><GradientStop Offset="0.5" Color="#FFB300"/><GradientStop Offset="1" Color="#795500"/>
+                            </LinearGradientBrush>
+                        </GeometryDrawing.Brush>
+                        <GeometryDrawing.Pen><Pen Brush="#4A2900" Thickness="0.5" LineJoin="Round"/></GeometryDrawing.Pen>
+                    </GeometryDrawing>
+                    <GeometryDrawing Geometry="M2.5,13.5 L4,6.5 H15.5 L14,13.5 Z">
+                        <GeometryDrawing.Brush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Offset="0" Color="#FFD54F"/><GradientStop Offset="1" Color="#E65100"/>
+                            </LinearGradientBrush>
+                        </GeometryDrawing.Brush>
+                        <GeometryDrawing.Pen><Pen Brush="#4A2900" Thickness="0.5" LineJoin="Round"/></GeometryDrawing.Pen>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- trash (clear) -->
+        <DrawingImage x:Key="IconTrash">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Geometry="M4,7 H20 M9,7 V5 A1,1 0 0 1 10,4 H14 A1,1 0 0 1 15,5 V7 M5,7 L6,20 A1,1 0 0 0 7,21 H17 A1,1 0 0 0 18,20 L19,7 M10,11 V17 M14,11 V17">
+                    <GeometryDrawing.Pen><Pen Brush="#94A3B8" Thickness="2" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/></GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- close (red X) -->
+        <DrawingImage x:Key="IconClose">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Geometry="M3,3 L21,21 M21,3 L3,21">
+                    <GeometryDrawing.Pen>
+                        <Pen Thickness="3.5" StartLineCap="Round" EndLineCap="Round">
+                            <Pen.Brush><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Offset="0" Color="#FF8080"/><GradientStop Offset="1" Color="#CC0000"/></LinearGradientBrush></Pen.Brush>
+                        </Pen>
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- nav up (arrow) -->
+        <DrawingImage x:Key="IconUp">
+            <DrawingImage.Drawing>
+                <DrawingGroup>
+                    <DrawingGroup.Transform><RotateTransform Angle="-90" CenterX="12" CenterY="12"/></DrawingGroup.Transform>
+                    <GeometryDrawing Geometry="M7,20 L7,9 Q7,4 12,4 L17,4 M13,8 L17,4 L13,0.5">
+                        <GeometryDrawing.Pen><Pen Brush="#94A3B8" Thickness="2.5" StartLineCap="Round" EndLineCap="Round" LineJoin="Round"/></GeometryDrawing.Pen>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- minimize -->
+        <DrawingImage x:Key="IconMin">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Geometry="M22,2 L14,10 L14,2 M2,22 L10,14 L10,22">
+                    <GeometryDrawing.Pen>
+                        <Pen Thickness="2.5" StartLineCap="Round" EndLineCap="Round" LineJoin="Round">
+                            <Pen.Brush><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Offset="0" Color="#FFE040"/><GradientStop Offset="1" Color="#CC8800"/></LinearGradientBrush></Pen.Brush>
+                        </Pen>
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- maximize -->
+        <DrawingImage x:Key="IconMax">
+            <DrawingImage.Drawing>
+                <GeometryDrawing Geometry="M14,2 L22,2 L22,10 M22,2 L13,11 M10,22 L2,22 L2,14 M2,22 L11,13">
+                    <GeometryDrawing.Pen>
+                        <Pen Thickness="2.5" StartLineCap="Round" EndLineCap="Round" LineJoin="Round">
+                            <Pen.Brush><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Offset="0" Color="#70FF88"/><GradientStop Offset="1" Color="#008830"/></LinearGradientBrush></Pen.Brush>
+                        </Pen>
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingImage.Drawing>
+        </DrawingImage>
     </Application.Resources>
 </Application>
