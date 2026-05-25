@@ -13,6 +13,9 @@ namespace APIMonitor.Native
         public const uint SOURCE_KERNEL   = 2;
         public const uint SOURCE_WEIRD    = 3;
 
+        public const uint EVKIND_CALL = 0;
+        public const uint EVKIND_RET  = 1;
+
         public const uint KSUB_PROC_CREATE = 0;
         public const uint KSUB_PROC_EXIT   = 1;
         public const uint KSUB_IMAGE_LOAD  = 2;

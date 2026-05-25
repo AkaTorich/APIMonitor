@@ -35,6 +35,9 @@
     <TargetName>APIHook64</TargetName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
   <PropertyGroup>
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Configuration)\</IntDir>
@@ -87,6 +90,9 @@
     <ClCompile Include="minhook\src\hde\hde64.c" />
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="gate_x64.asm" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="hook_common.h" />
     <ClInclude Include="log_client.h" />
     <ClInclude Include="format.h" />
@@ -94,4 +100,7 @@
     <ClInclude Include="..\apimon_proto.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
 </Project>

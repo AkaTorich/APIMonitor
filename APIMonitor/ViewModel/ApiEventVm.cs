@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text;
 using APIMonitor.Model;
 using APIMonitor.Native;
@@ -8,14 +9,16 @@ using APIMonitor.Services;
 namespace APIMonitor.ViewModel
 {
     /// <summary>
-    /// One row in the DataGrid. Constructed once when the event arrives;
-    /// no INotifyPropertyChanged needed since rows are immutable.
+    /// One row in the DataGrid. Built from a CALL event; the Args/Function
+    /// columns are immutable, but Ret is filled in later when the matching
+    /// RET event arrives (return-value capture), so it raises change
+    /// notifications.
     ///
     /// If a Win32MetadataResolver is supplied, "module!Func(0x..., ...)"
     /// strings from the Hook DLL get rewritten with proper parameter names
     /// and types from Microsoft.Windows.SDK.Win32Metadata.
     /// </summary>
-    public sealed class ApiEventVm
+    public sealed class ApiEventVm : INotifyPropertyChanged
     {
         public int    Index    { get; }
         public string Time     { get; }
@@ -23,11 +26,27 @@ namespace APIMonitor.ViewModel
         public string SourceText { get; }
         public uint   Pid      { get; }
         public uint   Tid      { get; }
+        public uint   CallId   { get; }
         public string Module   { get; }
         public string Function { get; }
         public string Args     { get; }
-        public string Ret      { get; }
         public string CallerModule { get; }
+
+        private string _ret;
+        public  string Ret
+        {
+            get => _ret;
+            private set
+            {
+                if (_ret != value)
+                {
+                    _ret = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Ret)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
 
         public ApiEventVm(int index, ApiEvent ev, double secondsSinceStart,
                           Win32MetadataResolver winmd, TargetMemoryReader mem)
@@ -38,6 +57,7 @@ namespace APIMonitor.ViewModel
             SourceText = SourceToText(ev.Source);
             Pid    = ev.Pid;
             Tid    = ev.Tid;
+            CallId = ev.CallId;
 
             if (ev.Args != null)
             {
@@ -62,6 +82,44 @@ namespace APIMonitor.ViewModel
 
         public ApiEventVm(int index, ApiEvent ev, double secondsSinceStart)
             : this(index, ev, secondsSinceStart, null, null) { }
+
+        /// <summary>
+        /// Fill in the Ret column from the matching RET event. The raw value
+        /// is formatted according to the function's declared return type
+        /// (resolved via Win32Metadata by the caller).
+        /// </summary>
+        public void SetReturnValue(ulong raw, string returnType, TargetMemoryReader mem)
+        {
+            Ret = FormatReturn(returnType, raw, mem);
+        }
+
+        private static string FormatReturn(string type, ulong val, TargetMemoryReader mem)
+        {
+            /* void-returning functions have no meaningful result - leave the
+             * Ret cell blank rather than printing the stale EAX/RAX. */
+            if (type == "void")
+                return string.Empty;
+            if (string.IsNullOrEmpty(type))
+                return "0x" + val.ToString("X");
+
+            if (type == "BOOL" || type == "BOOLEAN")
+                return (val & 0xFFFFFFFFu) != 0 ? "TRUE" : "FALSE";
+
+            if (IsSignedIntType(type))
+                return SignExtend(val, TypeBits(type)).ToString();
+
+            if (IsUnsignedIntType(type))
+                return (val & MaskForBits(TypeBits(type))).ToString();
+
+            if ((IsWideStringType(type) || IsAnsiStringType(type)) && mem != null && val != 0)
+            {
+                string s = IsWideStringType(type) ? mem.ReadWide(val) : mem.ReadAnsi(val);
+                if (s != null)
+                    return (IsWideStringType(type) ? "L\"" : "\"") + EscapeForLog(s, 200) + "\"";
+            }
+
+            return "0x" + val.ToString("X");
+        }
 
         private static bool IsWideStringType(string t)
         {

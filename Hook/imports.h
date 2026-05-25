@@ -94,27 +94,9 @@ typedef struct _APIMON_IMPORTS {
     PFN_CreateFileMappingW          pCreateFileMappingW;
     PFN_MapViewOfFile               pMapViewOfFile;
     PFN_UnmapViewOfFile             pUnmapViewOfFile;
-
-    PFN_TrySubmitThreadpoolCallback pTrySubmitThreadpoolCallback;
 } APIMON_IMPORTS;
 
 extern APIMON_IMPORTS g_imp;
-
-/* Address ranges of "noise" modules - our own Hook DLL, every DLL under
- * System32/SysWOW64/WinSxS, and the C runtime. CommonHandler drops events
- * whose caller_retaddr lies in any of these ranges.
- *
- * Snapshot is taken at ImpResolve time (PEB walk). Modules loaded later
- * are NOT covered - those are typically user DLLs (plugins, etc.) which
- * we DO want to monitor. */
-#define APIMON_MAX_NOISE_RANGES 256
-typedef struct _APIMON_NOISE_RANGE {
-    ULONG_PTR base;
-    ULONG_PTR end;
-} APIMON_NOISE_RANGE;
-
-extern APIMON_NOISE_RANGE g_noise_ranges[APIMON_MAX_NOISE_RANGES];
-extern volatile LONG       g_noise_count;
 
 /* Returns FALSE if any required function couldn't be resolved. Called once
  * at the very top of DllMain, before any other Hook DLL code runs. */

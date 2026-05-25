@@ -25,20 +25,9 @@
                             CornerRadius="0"/>
     </shell:WindowChrome.WindowChrome>
 
+    <!-- Maximize fits the monitor work area exactly (WM_GETMINMAXINFO in
+         code-behind), so no margin compensation is needed. -->
     <Border BorderBrush="#FFFF00" BorderThickness="1">
-        <!-- Когда WindowStyle="None"+WindowChrome максимизирован, Windows
-             расширяет окно за пределы work area на ~8px - наш контент по
-             краям обрезается. Компенсируем margin'ом только в Maximized. -->
-        <Border.Style>
-            <Style TargetType="Border">
-                <Setter Property="Margin" Value="0"/>
-                <Style.Triggers>
-                    <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
-                        <Setter Property="Margin" Value="8"/>
-                    </DataTrigger>
-                </Style.Triggers>
-            </Style>
-        </Border.Style>
     <DockPanel LastChildFill="True">
 
         <!-- Custom title bar -->
@@ -107,10 +96,13 @@
                 BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="8">
+          <StackPanel Orientation="Vertical">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -143,7 +135,40 @@
                         Content="Clear"
                         Margin="6,0,0,0"
                         Command="{Binding ClearCommand}"/>
+
+                <Label Grid.Column="7" Content="Search:" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="8"
+                         Width="220"
+                         Margin="6,0,0,0"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Filter rows by Function / Args / Ret (case-insensitive)"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
             </Grid>
+
+            <!-- Remote relay row -->
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <CheckBox Content="Remote"
+                          VerticalAlignment="Center"
+                          Foreground="{StaticResource AccentBrush}"
+                          FontWeight="Bold"
+                          IsChecked="{Binding RemoteEnabled}"
+                          ToolTip="Launch &amp; monitor on a remote machine via ApimonRelay. Target .exe path above is then the path ON THE REMOTE machine."/>
+                <Label Content="Host:" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                <TextBox Width="140" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                         IsEnabled="{Binding RemoteEnabled}"
+                         Text="{Binding RemoteHost, UpdateSourceTrigger=PropertyChanged}"/>
+                <Label Content="Port:" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                <TextBox Width="70" Margin="6,0,0,0" VerticalContentAlignment="Center"
+                         IsEnabled="{Binding RemoteEnabled}"
+                         Text="{Binding RemotePort, UpdateSourceTrigger=PropertyChanged}"/>
+                <Button Content="Browse VM..." Margin="12,0,0,0"
+                        IsEnabled="{Binding RemoteEnabled}"
+                        Command="{Binding BrowseRemoteCommand}"
+                        ToolTip="Browse the remote machine's filesystem and pick a .exe"/>
+                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Opacity="0.7"
+                           Text="(run ApimonRelay.exe elevated on the remote machine first)"/>
+            </StackPanel>
+          </StackPanel>
         </Border>
 
         <!-- Status bar -->
@@ -207,13 +232,9 @@
             </DataGrid.Resources>
 
             <DataGrid.Columns>
-                <DataGridTextColumn Header="#"        Binding="{Binding Index}"     Width="60"/>
-                <DataGridTextColumn Header="PID"      Binding="{Binding Pid}"       Width="60"/>
-                <DataGridTextColumn Header="TID"      Binding="{Binding Tid}"       Width="60"/>
-                <DataGridTextColumn Header="Function" Binding="{Binding Function}"  Width="180"/>
-                <DataGridTextColumn Header="Args"     Binding="{Binding Args}"      Width="*"/>
-                <DataGridTextColumn Header="Ret"      Binding="{Binding Ret}"       Width="180"/>
-                <DataGridTextColumn Header="Caller"   Binding="{Binding CallerModule}" Width="240"/>
+                <DataGridTextColumn Header="Function" Binding="{Binding Function}"  Width="Auto"/>
+                <DataGridTextColumn Header="Args"     Binding="{Binding Args}"      Width="Auto"/>
+                <DataGridTextColumn Header="Ret"      Binding="{Binding Ret}"       Width="Auto"/>
             </DataGrid.Columns>
         </DataGrid>
 

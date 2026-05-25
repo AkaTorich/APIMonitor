@@ -1,15 +1,12 @@
 /*
  * iat_hook.c - inline-hook engine on top of MinHook.
  *
- * One slot per hooked export. Per-slot trampoline saves arg registers,
- * calls CommonHandler(slot_id, args*), restores, tail-jmps to MinHook's
- * trampoline-back (which runs the original code).
- *
- * CommonHandler does ONLY:
- *   - in_init / log_disabled / TLS guard short-circuit
- *   - RingPush() - one InterlockedIncrement and a struct copy
- *   - clear guard
- * No formatting, no kernel32 call, no recursion path.
+ * One slot per hooked export. MinHook points each API at a tiny per-slot
+ * stub that loads slot_id and jumps to a shared wrapper gate (GateX86 here
+ * for x86, ApimonGateX64 in gate_x64.asm for x64). The gate logs the CALL,
+ * calls the original via a real nested CALL, captures the return value,
+ * optionally logs the RET, and returns - so call/return pairing is exact
+ * and SEH/callbacks are unaffected (no return-address hijacking).
  */
 #include "hook_common.h"
 #include "log_client.h"
@@ -66,9 +63,9 @@ typedef struct _APIMON_SLOT {
 } APIMON_SLOT;
 
 #if defined(_WIN64)
-#define APIMON_TRAMPOLINE_SIZE 96
+#define APIMON_TRAMPOLINE_SIZE 128
 #else
-#define APIMON_TRAMPOLINE_SIZE 64
+#define APIMON_TRAMPOLINE_SIZE 96
 #endif
 
 typedef struct _APIMON_TRAMPOLINE {
@@ -80,156 +77,231 @@ static APIMON_TRAMPOLINE  *g_trampolines   = NULL;
 static volatile LONG       g_slot_count    = 0;
 
 /*
- * regs/stackArgs as before. caller_retaddr = address right after the
- * `call` instruction in the calling module - lets the GUI map it back
- * to whichever DLL/exe initiated the WinAPI call.
+ * Return-value capture via a real wrapper frame (NOT return-address
+ * hijacking - that breaks x64 table-based SEH unwinding and desyncs across
+ * win32k/WOW64 callbacks, which crashed every target).
+ *
+ * MinHook points the API at a tiny per-slot stub that jumps to a shared
+ * gate. The gate is a genuine function with a normal stack frame: it logs
+ * the CALL, calls the original via the MinHook trampoline, captures the
+ * return value, logs the RET, and returns to the caller. Because the call
+ * to the original is a real nested CALL, the pairing is exact (no shadow
+ * stack, no heuristics) and unwinding/callbacks behave normally.
+ *
+ *   x64: gate is MASM (gate_x64.asm) so the linker emits proper unwind
+ *        info; it forwards rcx/rdx/r8/r9 plus a generous span of stack args.
+ *   x86: gate is a naked wrapper below. stdcall cleans an unknown number of
+ *        argument bytes, so instead of needing the arity up front we MEASURE
+ *        how many bytes the original popped (ESP delta) and clean exactly
+ *        that many on the way back - works for both stdcall and cdecl.
  */
-#if defined(_WIN64)
-static void __fastcall
-#else
-static void __cdecl
-#endif
-CommonHandler(ULONG_PTR slot_id, ULONG_PTR *regs, ULONG_PTR *stackArgs, ULONG_PTR caller_retaddr)
-{
-    if (g_in_init) return;
-    if (g_log_disabled) return;
 
-    /* Drop events whose caller is in a "noise" module: our Hook DLL, the
-     * C runtime, or any System32/SysWOW64/WinSxS DLL (system-to-system
-     * internal traffic). Linear scan over <= 256 ranges is fine - the
-     * trampoline path is already heavy. */
-    {
-        LONG n = g_noise_count;
-        for (LONG i = 0; i < n; i++) {
-            if (caller_retaddr >= g_noise_ranges[i].base &&
-                caller_retaddr <  g_noise_ranges[i].end)
-                return;
-        }
-    }
+/* The four helpers the gates call. Non-static so the x64 MASM gate can
+ * link against them; the x86 naked gate calls them by name in the same
+ * translation unit. */
+ULONG_PTR GateLogCall(ULONG_PTR slot_id, ULONG_PTR *regs, ULONG_PTR *stack, ULONG_PTR caller_ret)
+{
+    if (g_in_init || g_log_disabled) return 0;
 
     if (g_tlsInHook != TLS_OUT_OF_INDEXES) {
-        if (GuardGet(g_tlsInHook) != NULL) return;
+        if (GuardGet(g_tlsInHook) != NULL) return 0;
         GuardSet(g_tlsInHook, (PVOID)(ULONG_PTR)1);
     }
 
     ULONG_PTR all[12];
 #if defined(_WIN64)
-    all[0] = regs[0];
-    all[1] = regs[1];
-    all[2] = regs[2];
-    all[3] = regs[3];
-    for (int i = 0; i < 8; i++) all[4 + i] = stackArgs[i];
+    all[0] = regs[0]; all[1] = regs[1]; all[2] = regs[2]; all[3] = regs[3];
+    for (int i = 0; i < 8; i++) all[4 + i] = stack[i];
 #else
     (void)regs;
-    for (int i = 0; i < 12; i++) all[i] = stackArgs[i];
+    for (int i = 0; i < 12; i++) all[i] = stack[i];
 #endif
 
-    RingPush((UINT32)slot_id, caller_retaddr, all);
+    UINT32 call_id = RingPushCall((UINT32)slot_id, caller_ret, all);
 
     if (g_tlsInHook != TLS_OUT_OF_INDEXES)
         GuardSet(g_tlsInHook, NULL);
+
+    /* call_id 0 is valid; the gate distinguishes "skip" via GateWantRet. */
+    return call_id;
+}
+
+int GateWantRet(ULONG_PTR slot_id)
+{
+    (void)slot_id;
+    if (g_in_init || g_log_disabled) return 0;
+    return 1;
+}
+
+void GateLogRet(ULONG_PTR slot_id, ULONG_PTR caller_ret, UINT32 call_id, ULONG_PTR retval)
+{
+    int had = 0;
+    if (g_tlsInHook != TLS_OUT_OF_INDEXES) {
+        if (GuardGet(g_tlsInHook) == NULL) {
+            GuardSet(g_tlsInHook, (PVOID)(ULONG_PTR)1);
+            had = 1;
+        }
+    }
+    RingPushRet((UINT32)slot_id, caller_ret, call_id, retval);
+    if (had)
+        GuardSet(g_tlsInHook, NULL);
+}
+
+void *GateOrig(ULONG_PTR slot_id)
+{
+    return g_slots[slot_id].orig_addr;
 }
 
 #if defined(_WIN64)
+/* The x64 gate lives in gate_x64.asm (MASM, so the linker emits proper
+ * unwind info - essential for table-based SEH). The per-slot stub loads
+ * slot_id into r10 and jumps to it. */
+extern void ApimonGateX64(void);
+#else
 /*
- * After 4 pushes (32 bytes), caller's return address sits at [rsp+32]
- * (it was at [rsp+0] on trampoline entry). Load it into r9 as the 4th
- * arg of CommonHandler. Stack args 5+ live at [rsp+72] (32 pushes + 8
- * retaddr + 32 caller-shadow).
+ * x86 wrapper gate. Reached from the per-slot stub with EAX = slot_id and
+ * the stack exactly as the API was called: [esp]=caller_ret, [esp+4..]=args.
+ *
+ * It builds a real EBP frame, logs the CALL, then:
+ *   - if return capture isn't wanted: tail-jumps into the original with the
+ *     stack untouched (pure log, zero return-path interference);
+ *   - else: copies a generous span of argument bytes, calls the original as
+ *     a genuine nested CALL, MEASURES how many bytes it popped (ESP delta -
+ *     works for stdcall and cdecl alike), logs the RET with the captured
+ *     EAX, then returns to the caller cleaning exactly that many bytes.
+ *
+ * No return-address hijack and no shadow stack, so SEH and win32k/WOW64
+ * callbacks are completely unaffected.
+ */
+__declspec(naked) static void GateX86(void)
+{
+    __asm {
+        ; eax = slot_id ; ecx/edx = caller's (fastcall/thiscall args!) ;
+        ; [esp]=caller_ret, [esp+4..]=stack args
+        push ebp
+        mov  ebp, esp
+        sub  esp, 24              ; [ebp-4]=slot [ebp-8]=call_id [ebp-12]=M
+                                  ; [ebp-16]=retval [ebp-20]=ecx [ebp-24]=edx
+        mov  dword ptr [ebp-4], eax
+        mov  dword ptr [ebp-20], ecx   ; preserve fastcall ecx
+        mov  dword ptr [ebp-24], edx   ; preserve fastcall edx
+        push ebx                  ; [ebp-28] saved caller ebx
+        push esi                  ; [ebp-32] saved caller esi
+        push edi                  ; [ebp-36] saved caller edi
+
+        ; --- GateLogCall(slot, regs, stack, caller_ret) ---
+        ; 4 args. On x86 there are no register args, so regs == stack == &args.
+        mov  eax, [ebp+4]
+        push eax                  ; caller_ret (4th)
+        lea  eax, [ebp+8]
+        push eax                  ; stack = &args (3rd)
+        push eax                  ; regs  = &args (2nd)
+        push dword ptr [ebp-4]    ; slot  (1st)
+        call GateLogCall
+        add  esp, 16
+        mov  [ebp-8], eax         ; call_id
+
+        ; --- GateWantRet(slot) ---
+        push dword ptr [ebp-4]
+        call GateWantRet
+        add  esp, 4
+        test eax, eax
+        jz   tail
+
+        ; ===== capture path: copy args, call original, measure pop =====
+        sub  esp, 96
+        cld
+        mov  edi, esp
+        lea  esi, [ebp+8]
+        mov  ecx, 24
+        rep  movsd
+        mov  ebx, esp             ; arg-copy base (nonvol; survives the call)
+
+        push dword ptr [ebp-4]
+        call GateOrig
+        add  esp, 4               ; eax = original (MinHook trampoline); esp back to ebx
+
+        mov  ecx, [ebp-20]        ; restore fastcall args for the original
+        mov  edx, [ebp-24]
+        call eax                  ; nested call; stdcall pops its args -> esp = ebx + M
+        mov  [ebp-16], eax        ; captured return value
+
+        mov  ecx, esp
+        sub  ecx, ebx
+        mov  [ebp-12], ecx        ; M = bytes the original popped
+
+        ; --- GateLogRet(slot, caller_ret, call_id, retval) ---
+        push dword ptr [ebp-16]
+        push dword ptr [ebp-8]
+        push dword ptr [ebp+4]
+        push dword ptr [ebp-4]
+        call GateLogRet
+        add  esp, 16
+
+        ; --- return to caller, cleaning M argument bytes ---
+        mov  eax, [ebp-16]        ; retval -> eax
+        mov  ecx, [ebp+4]         ; caller_ret
+        mov  edx, [ebp-12]        ; M
+        lea  edx, [ebp+edx+8]     ; final esp = ebp+8+M (== entry esp +4 +M)
+        mov  ebx, [ebp-28]
+        mov  esi, [ebp-32]
+        mov  edi, [ebp-36]
+        mov  ebp, [ebp]
+        mov  esp, edx
+        jmp  ecx
+
+      tail:
+        ; log-only: restore all registers (incl. fastcall ecx/edx) and
+        ; tail-jump into the original, leaving the stack exactly as at entry.
+        push dword ptr [ebp-4]
+        call GateOrig
+        add  esp, 4               ; eax = original
+        mov  ebx, [ebp-28]
+        mov  esi, [ebp-32]
+        mov  edi, [ebp-36]
+        mov  ecx, [ebp-20]        ; restore fastcall ecx
+        mov  edx, [ebp-24]        ; restore fastcall edx
+        mov  esp, ebp
+        pop  ebp                  ; esp now -> caller_ret slot, stack as at entry
+        jmp  eax                  ; eax holds orig; eax is not an input arg on x86
+    }
+}
+#endif
+
+#if defined(_WIN64)
+/*
+ * Per-slot stub: load slot_id into r10 (a volatile register, not an argument
+ * register) and jump to the shared MASM gate. rcx/rdx/r8/r9 (args 1-4) and
+ * the stack args are left exactly as the caller set them.
  */
 static void GenerateTrampoline(BYTE *p, ULONG_PTR slot_id)
 {
-    PVOID *orig_ptr = &g_slots[slot_id].orig_addr;
-
-    /* push r9 / push r8 / push rdx / push rcx */
-    *p++ = 0x41; *p++ = 0x51;
-    *p++ = 0x41; *p++ = 0x50;
-    *p++ = 0x52;
-    *p++ = 0x51;
-
-    /* mov rcx, slot_id */
-    *p++ = 0x48; *p++ = 0xB9;
+    /* mov r10, slot_id */
+    *p++ = 0x49; *p++ = 0xBA;
     *(ULONGLONG *)p = (ULONGLONG)slot_id; p += 8;
-
-    /* mov rdx, rsp  -- ptr to saved [rcx,rdx,r8,r9] */
-    *p++ = 0x48; *p++ = 0x89; *p++ = 0xE2;
-
-    /* lea r8, [rsp + 72]  -- ptr to caller's stack args (arg5+) */
-    *p++ = 0x4C; *p++ = 0x8D; *p++ = 0x44; *p++ = 0x24; *p++ = 0x48;
-
-    /* mov r9, [rsp + 32]  -- caller return address (4th arg) */
-    *p++ = 0x4C; *p++ = 0x8B; *p++ = 0x4C; *p++ = 0x24; *p++ = 0x20;
-
-    /* sub rsp, 40  -- shadow space + 8-byte align */
-    *p++ = 0x48; *p++ = 0x83; *p++ = 0xEC; *p++ = 0x28;
-
-    /* mov rax, CommonHandler */
+    /* mov rax, ApimonGateX64 */
     *p++ = 0x48; *p++ = 0xB8;
-    *(ULONGLONG *)p = (ULONGLONG)(ULONG_PTR)CommonHandler; p += 8;
-
-    /* call rax */
-    *p++ = 0xFF; *p++ = 0xD0;
-
-    /* add rsp, 40 */
-    *p++ = 0x48; *p++ = 0x83; *p++ = 0xC4; *p++ = 0x28;
-
-    /* pop rcx / pop rdx / pop r8 / pop r9 */
-    *p++ = 0x59;
-    *p++ = 0x5A;
-    *p++ = 0x41; *p++ = 0x58;
-    *p++ = 0x41; *p++ = 0x59;
-
-    /* mov rax, qword ptr [orig_ptr] */
-    *p++ = 0x48; *p++ = 0xA1;
-    *(ULONGLONG *)p = (ULONGLONG)(ULONG_PTR)orig_ptr; p += 8;
-
+    *(ULONGLONG *)p = (ULONGLONG)(ULONG_PTR)ApimonGateX64; p += 8;
     /* jmp rax */
     *p++ = 0xFF; *p++ = 0xE0;
 }
 #else
 /*
- * x86 cdecl. After pushad+pushfd ret_addr at [esp+36], caller args at
- * [esp+40]. cdecl push order is right-to-left: 4th arg (caller_retaddr)
- * pushed first, then stackArgs, then regs, then slot_id.
+ * Per-slot stub: load slot_id into eax and jump (rel32) to GateX86. Only
+ * eax is touched - it is never an incoming argument register in any x86
+ * calling convention, so ecx/edx (fastcall/thiscall args) reach the gate
+ * intact. The original stack ([esp]=caller_ret, [esp+4..]=args) is left
+ * untouched.
  */
 static void GenerateTrampoline(BYTE *p, ULONG_PTR slot_id)
 {
-    PVOID *orig_ptr = &g_slots[slot_id].orig_addr;
-
-    /* pushad ; pushfd */
-    *p++ = 0x60;
-    *p++ = 0x9C;
-
-    /* mov eax, [esp+36]  -- caller return address */
-    *p++ = 0x8B; *p++ = 0x44; *p++ = 0x24; *p++ = 0x24;
-    /* push eax           -- 4th arg (caller_retaddr) */
-    *p++ = 0x50;
-
-    /* lea eax, [esp+44]  -- caller args (offset shifted by +4 from prior push) */
-    *p++ = 0x8D; *p++ = 0x44; *p++ = 0x24; *p++ = 0x2C;
-    /* push eax           -- 3rd arg (stackArgs) */
-    *p++ = 0x50;
-    /* push eax           -- 2nd arg (regs, same pointer) */
-    *p++ = 0x50;
-    /* push slot_id       -- 1st arg */
-    *p++ = 0x68;
-    *(ULONG *)p = (ULONG)slot_id; p += 4;
-
-    /* mov eax, CommonHandler ; call eax */
+    BYTE *start = p;
+    /* mov eax, slot_id */
     *p++ = 0xB8;
-    *(ULONG *)p = (ULONG)(ULONG_PTR)CommonHandler; p += 4;
-    *p++ = 0xFF; *p++ = 0xD0;
-
-    /* add esp, 16 (cleanup 4 cdecl args) */
-    *p++ = 0x83; *p++ = 0xC4; *p++ = 0x10;
-
-    /* popfd ; popad */
-    *p++ = 0x9D;
-    *p++ = 0x61;
-
-    /* jmp dword ptr [orig_ptr] */
-    *p++ = 0xFF; *p++ = 0x25;
-    *(ULONG *)p = (ULONG)(ULONG_PTR)orig_ptr; p += 4;
+    *(ULONG *)p = (ULONG)slot_id; p += 4;
+    /* jmp rel32 -> GateX86 */
+    *p++ = 0xE9;
+    *(LONG *)p = (LONG)((ULONG_PTR)GateX86 - ((ULONG_PTR)start + 10)); p += 4;
 }
 #endif
 
@@ -289,33 +361,18 @@ static DWORD HookModuleExports(HMODULE hMod, const char *modName)
 }
 
 static const wchar_t *kSystemModules[] = {
-    /* core */
+    /* Conservative core set - the recent extension to 44 DLLs caused
+     * STATUS_FATAL_USER_CALLBACK_EXCEPTION on launch (a prolog in one of
+     * the new DLLs MinHook can't relocate). Add modules back one by one
+     * once the base set is verified to run cleanly. */
     L"kernel32.dll",  L"kernelbase.dll", L"user32.dll",   L"gdi32.dll",
-    L"advapi32.dll",
-    /* COM/OLE */
-    L"ole32.dll",     L"oleaut32.dll",   L"combase.dll",
-    /* shell */
-    L"shell32.dll",   L"shlwapi.dll",    L"shcore.dll",
-    L"comctl32.dll",  L"comdlg32.dll",
-    /* network */
-    L"ws2_32.dll",    L"wininet.dll",    L"winhttp.dll",  L"urlmon.dll",
-    L"iphlpapi.dll",  L"dnsapi.dll",     L"mpr.dll",      L"netapi32.dll",
-    L"wlanapi.dll",   L"fwpuclnt.dll",
-    /* crypto / security */
+    L"advapi32.dll",  L"ole32.dll",      L"oleaut32.dll", L"shell32.dll",
+    L"shlwapi.dll",   L"ws2_32.dll",     L"wininet.dll",  L"winhttp.dll",
     L"crypt32.dll",   L"bcrypt.dll",     L"ncrypt.dll",   L"wintrust.dll",
-    L"sspicli.dll",   L"secur32.dll",
-    /* process / debug / system */
-    L"psapi.dll",     L"version.dll",    L"userenv.dll",  L"wtsapi32.dll",
-    L"imagehlp.dll",  L"dbghelp.dll",    L"pdh.dll",      L"fltlib.dll",
-    L"profapi.dll",
-    /* RPC */
-    L"rpcrt4.dll",
-    /* Active Directory */
-    L"ntdsapi.dll",
-    /* Event Log / Scheduler */
-    L"wevtapi.dll",   L"taskschd.dll",
-    /* UI */
-    L"dwmapi.dll",    L"uxtheme.dll"
+    L"comctl32.dll",  L"comdlg32.dll",   L"iphlpapi.dll", L"dnsapi.dll",
+    L"psapi.dll",     L"version.dll",    L"sspicli.dll",  L"secur32.dll",
+    L"userenv.dll",   L"wtsapi32.dll",   L"mpr.dll",      L"netapi32.dll",
+    L"imagehlp.dll",  L"dbghelp.dll",    L"urlmon.dll"
 };
 
 DWORD HooksInstall(void)

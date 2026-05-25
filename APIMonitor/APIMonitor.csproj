@@ -99,12 +99,20 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="RemoteBrowseWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="RemoteBrowseWindow.xaml.cs">
+      <DependentUpon>RemoteBrowseWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs">
@@ -116,7 +124,10 @@
     <Compile Include="ViewModel\BatchObservableCollection.cs" />
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\RelayCommand.cs" />
+    <Compile Include="Net\ApiEventWire.cs" />
     <Compile Include="Services\PipeServer.cs" />
+    <Compile Include="Services\RemoteClient.cs" />
+    <Compile Include="Services\RemoteBrowserClient.cs" />
     <Compile Include="Services\SharedRingReader.cs" />
     <Compile Include="Services\TargetMemoryReader.cs" />
     <Compile Include="Services\WeirdSyscallDetector.cs" />

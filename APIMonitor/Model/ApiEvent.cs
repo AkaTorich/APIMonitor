@@ -14,6 +14,9 @@ namespace APIMonitor.Model
         public ulong  TimestampQpc;
         public uint   Source;
         public uint   Subcategory;
+        public uint   Kind;              // 0 = CALL, 1 = RET (see apimon_proto.h)
+        public uint   CallId;            // pairs a RET back to its CALL
+        public ulong  RetValue;          // RET only: raw return value (RAX/EAX)
         public string Module;
         public string Function;
         public ulong[] Args;             // length = 12

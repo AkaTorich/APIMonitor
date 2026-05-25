@@ -89,6 +89,12 @@
                                 <Setter TargetName="bd" Property="Background" Value="{StaticResource BorderBrush}"/>
                                 <Setter Property="Foreground" Value="#020404"/>
                             </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.35"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource DimBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource DimBrush}"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>

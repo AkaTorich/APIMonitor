@@ -30,6 +30,28 @@ namespace APIMonitor.ViewModel
             set { if (_targetPath != value) { _targetPath = value; OnChanged(); } }
         }
 
+        // ---- remote relay ----
+        private bool _remoteEnabled;
+        public  bool RemoteEnabled
+        {
+            get => _remoteEnabled;
+            set { if (_remoteEnabled != value) { _remoteEnabled = value; OnChanged(); } }
+        }
+
+        private string _remoteHost = "127.0.0.1";
+        public  string RemoteHost
+        {
+            get => _remoteHost;
+            set { if (_remoteHost != value) { _remoteHost = value; OnChanged(); } }
+        }
+
+        private string _remotePort = "28080";
+        public  string RemotePort
+        {
+            get => _remotePort;
+            set { if (_remotePort != value) { _remotePort = value; OnChanged(); } }
+        }
+
         private string _selectedFilter = "All";
         public  string SelectedFilter
         {
@@ -39,6 +61,23 @@ namespace APIMonitor.ViewModel
                 if (_selectedFilter != value)
                 {
                     _selectedFilter = value;
+                    OnChanged();
+                    RebuildVisible();
+                }
+            }
+        }
+
+        // Free-text filter over Function / Args / Ret (case-insensitive).
+        private string _searchText = string.Empty;
+        public  string SearchText
+        {
+            get => _searchText;
+            set
+            {
+                value = value ?? string.Empty;
+                if (_searchText != value)
+                {
+                    _searchText = value;
                     OnChanged();
                     RebuildVisible();
                 }
@@ -75,10 +114,11 @@ namespace APIMonitor.ViewModel
         public int  VisibleCount => VisibleEvents.Count;
 
         // ---- commands ----
-        private RelayCommand _browseCmd, _runStopCmd, _clearCmd;
-        public  ICommand BrowseCommand   => _browseCmd  ?? (_browseCmd  = new RelayCommand(DoBrowse));
-        public  ICommand RunStopCommand  => _runStopCmd ?? (_runStopCmd = new RelayCommand(DoRunStop));
-        public  ICommand ClearCommand    => _clearCmd   ?? (_clearCmd   = new RelayCommand(DoClear));
+        private RelayCommand _browseCmd, _runStopCmd, _clearCmd, _browseRemoteCmd;
+        public  ICommand BrowseCommand       => _browseCmd  ?? (_browseCmd  = new RelayCommand(DoBrowse));
+        public  ICommand RunStopCommand      => _runStopCmd ?? (_runStopCmd = new RelayCommand(DoRunStop));
+        public  ICommand ClearCommand        => _clearCmd   ?? (_clearCmd   = new RelayCommand(DoClear));
+        public  ICommand BrowseRemoteCommand => _browseRemoteCmd ?? (_browseRemoteCmd = new RelayCommand(DoBrowseRemote));
 
         // ---- internals ----
         private Window           _ownerWindow;
@@ -94,6 +134,7 @@ namespace APIMonitor.ViewModel
         private SharedRingReader _ringReader;
         private TargetMemoryReader _memReader;
         private WeirdSyscallDetector _weirdDetector;
+        private RemoteClient _remoteClient;
 
         public void Initialize(Window owner)
         {
@@ -222,6 +263,7 @@ namespace APIMonitor.ViewModel
             try { _launcher?.TryTerminate(); } catch { }
             try { _launcher?.Dispose();  } catch { }
             try { _weirdDetector?.Dispose(); } catch { }
+            try { _remoteClient?.Dispose(); } catch { }
             try { _ringReader?.Dispose(); } catch { }
             try { _memReader?.Dispose(); } catch { }
             try { _driverClient?.ClearTarget(); } catch { }
@@ -241,17 +283,76 @@ namespace APIMonitor.ViewModel
                 TargetPath = dlg.FileName;
         }
 
+        // Open the remote file picker (browses the VM's filesystem via the relay).
+        private void DoBrowseRemote()
+        {
+            if (!int.TryParse(RemotePort, out int port) || port <= 0 || port > 65535)
+            {
+                MessageBox.Show(_ownerWindow, "Invalid remote port.", "APIMonitor",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var win = new RemoteBrowseWindow(RemoteHost, port) { Owner = _ownerWindow };
+            if (win.ShowDialog() == true && !string.IsNullOrEmpty(win.SelectedPath))
+                TargetPath = win.SelectedPath;
+        }
+
         private void DoRunStop()
         {
             if (IsRunning)
             {
+                try { _remoteClient?.Dispose(); _remoteClient = null; } catch { }
                 try { _launcher?.TryTerminate(); } catch { }
                 StatusText = "Stopped.";
+                IsRunning = false;
+            }
+            else if (RemoteEnabled)
+            {
+                LaunchRemote();
             }
             else
             {
                 LaunchTarget();
             }
+        }
+
+        // Remote mode: connect to an ApimonRelay on the target machine and let
+        // it launch + inject there; stream events back into the same store.
+        // TargetPath here is the path on the REMOTE machine (typed by hand).
+        private void LaunchRemote()
+        {
+            if (string.IsNullOrWhiteSpace(TargetPath))
+            {
+                MessageBox.Show(_ownerWindow, "Enter the target .exe path on the remote machine.",
+                    "APIMonitor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (!int.TryParse(RemotePort, out int port) || port <= 0 || port > 65535)
+            {
+                MessageBox.Show(_ownerWindow, "Invalid remote port.", "APIMonitor",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // No local target -> no local memory; args show as types + hex.
+            _memReader = null;
+
+            _remoteClient?.Dispose();
+            _pendingCalls.Clear();
+            _remoteClient = new RemoteClient(_store);
+            _remoteClient.Disconnected += reason =>
+            {
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    IsRunning = false;
+                    StatusText = reason;
+                });
+            };
+            _remoteClient.Start(RemoteHost, port, TargetPath);
+
+            IsRunning = true;
+            StatusText = "Remote: connected to " + RemoteHost + ":" + port +
+                         ", launching " + TargetPath;
         }
 
         private void LaunchTarget()
@@ -276,6 +377,7 @@ namespace APIMonitor.ViewModel
                 _memReader = new TargetMemoryReader(_launcher.Pid);
 
                 _ringReader?.Dispose();
+                _pendingCalls.Clear();
                 _ringReader = new SharedRingReader(_store, _launcher.Pid, _memReader);
                 _ringReader.Start();
 
@@ -319,11 +421,28 @@ namespace APIMonitor.ViewModel
 
         private readonly List<ApiEventVm> _drainBatch = new List<ApiEventVm>(512);
 
+        // CALL rows awaiting their RET event, keyed by call_id. A RET fills in
+        // the row's Ret column; entries that never get a RET (functions that
+        // don't return, or whose RET was dropped) are pruned in bulk if the
+        // map grows unreasonably.
+        private readonly Dictionary<uint, ApiEventVm> _pendingCalls =
+            new Dictionary<uint, ApiEventVm>(4096);
+
         // If more than this many events arrive per 50 ms tick, switch from per-item
         // Add() to a single AddRange/Reset notification - otherwise the DataGrid
         // re-renders on every Add and the UI freezes.
         private const int BatchThreshold = 30;
         private const int DrainCap       = 2000;
+
+        // Hard ceiling on retained rows. A high-frequency target (e.g. a task
+        // manager polling every process) can emit events faster than a human
+        // reads them; without a cap the unbounded _allEvents/VisibleEvents
+        // lists grow until the GUI exhausts RAM and drags the whole box into
+        // swap. When we hit the cap we drop the oldest rows, keeping a recent
+        // window. RetentionCap is the max kept; RetentionKeep is what survives
+        // a trim.
+        private const int RetentionCap  = 400_000;
+        private const int RetentionKeep = 200_000;
 
         private void OnDrainTick(object sender, EventArgs e)
         {
@@ -334,9 +453,33 @@ namespace APIMonitor.ViewModel
 
             while (drained < DrainCap && _store.TryDequeue(out var ev))
             {
+                /* RET event: fill in the matching CALL row's return value.
+                 * It is not a row of its own. The CALL is always dequeued
+                 * before its RET (lower ring seq), so the row exists. */
+                if (ev.Kind == ApimonProto.EVKIND_RET)
+                {
+                    if (_pendingCalls.TryGetValue(ev.CallId, out var callVm))
+                    {
+                        _pendingCalls.Remove(ev.CallId);
+                        string rt = _winmd?.Lookup(callVm.Module, callVm.Function)?.ReturnType;
+                        callVm.SetReturnValue(ev.RetValue, rt, _memReader);
+                    }
+                    drained++;
+                    continue;
+                }
+
                 double secs = (ev.TimestampQpc - (ulong)_qpcStart) / _qpcFreq;
                 var vm = new ApiEventVm(_nextIndex++, ev, secs, _winmd, _memReader);
                 _allEvents.Add(vm);
+
+                /* Only real API CALL rows can receive a RET. Text/driver
+                 * events (Args == null) never do, so keep them out of the map. */
+                if (ev.Args != null)
+                {
+                    if (_pendingCalls.Count > 200_000) _pendingCalls.Clear();
+                    _pendingCalls[vm.CallId] = vm;
+                }
+
                 if (PassesFilter(vm))
                     _drainBatch.Add(vm);
                 /* track for the memory watchdog so we know what the target was doing if it tanks */
@@ -344,7 +487,16 @@ namespace APIMonitor.ViewModel
                 drained++;
             }
 
-            if (_drainBatch.Count > 0)
+            // With an active search the incremental add can't account for Ret
+            // values that arrive (and may match) after their CALL row was
+            // already filtered out, so re-scan instead. Without a search we
+            // add incrementally for a live feel.
+            if (_searchText.Length > 0)
+            {
+                if (drained > 0)
+                    RebuildVisible();
+            }
+            else if (_drainBatch.Count > 0)
             {
                 if (_drainBatch.Count <= BatchThreshold)
                 {
@@ -359,6 +511,9 @@ namespace APIMonitor.ViewModel
                 }
             }
 
+            if (_allEvents.Count > RetentionCap)
+                TrimRetention();
+
             if (drained > 0)
             {
                 OnChanged(nameof(TotalCount));
@@ -367,14 +522,40 @@ namespace APIMonitor.ViewModel
             }
         }
 
+        // Drop the oldest rows down to RetentionKeep so memory stays bounded
+        // regardless of how fast the target emits events. Pending CALL->RET
+        // matches for dropped rows are abandoned (their Ret just stays blank).
+        private void TrimRetention()
+        {
+            int drop = _allEvents.Count - RetentionKeep;
+            if (drop <= 0) return;
+            _allEvents.RemoveRange(0, drop);
+            _pendingCalls.Clear();
+            RebuildVisible();
+            StatusText = "Trimmed " + drop + " old events (memory cap " + RetentionCap + ").";
+        }
+
         private bool PassesFilter(ApiEventVm vm)
         {
+            bool sourceOk;
             switch (_selectedFilter)
             {
-                case "User-mode (API)": return vm.Source == ApimonProto.SOURCE_USER_API;
-                case "User-mode (COM)": return vm.Source == ApimonProto.SOURCE_USER_COM;
-                default:                return true;
+                case "User-mode (API)": sourceOk = vm.Source == ApimonProto.SOURCE_USER_API; break;
+                case "User-mode (COM)": sourceOk = vm.Source == ApimonProto.SOURCE_USER_COM; break;
+                default:                sourceOk = true; break;
             }
+            if (!sourceOk) return false;
+
+            if (_searchText.Length == 0) return true;
+            return Contains(vm.Function, _searchText)
+                || Contains(vm.Ret,      _searchText)
+                || Contains(vm.Args,     _searchText);
+        }
+
+        private static bool Contains(string haystack, string needle)
+        {
+            return !string.IsNullOrEmpty(haystack)
+                && haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void RebuildVisible()

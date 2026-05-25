@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <ProjectGuid>{6F6F6F6F-6666-6666-6666-666666666666}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ApimonRelay</RootNamespace>
+    <AssemblyName>ApimonRelay</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <WarningLevel>4</WarningLevel>
+    <Deterministic>true</Deterministic>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <LangVersion>7.3</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\bin\Debug\</OutputPath>
+    <IntermediateOutputPath>..\obj\$(MSBuildProjectName)\Debug\</IntermediateOutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\bin\Release\</OutputPath>
+    <IntermediateOutputPath>..\obj\$(MSBuildProjectName)\Release\</IntermediateOutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Relay-specific code -->
+    <Compile Include="Program.cs" />
+    <!-- Shared backend, linked from the GUI project (no duplication) -->
+    <Compile Include="..\APIMonitor\Net\ApiEventWire.cs">
+      <Link>Shared\ApiEventWire.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Model\ApiEvent.cs">
+      <Link>Shared\ApiEvent.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Model\EventStore.cs">
+      <Link>Shared\EventStore.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Services\SharedRingReader.cs">
+      <Link>Shared\SharedRingReader.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Services\TargetMemoryReader.cs">
+      <Link>Shared\TargetMemoryReader.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Services\Launcher.cs">
+      <Link>Shared\Launcher.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Services\Injector.cs">
+      <Link>Shared\Injector.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Services\DriverClient.cs">
+      <Link>Shared\DriverClient.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Native\NativeMethods.cs">
+      <Link>Shared\NativeMethods.cs</Link>
+    </Compile>
+    <Compile Include="..\APIMonitor\Native\ApimonProto.cs">
+      <Link>Shared\ApimonProto.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.manifest" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

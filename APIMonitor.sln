@@ -18,6 +18,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Injector32", "Injector32\In
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "APIMonitorDrv", "Driver\Driver.vcxproj", "{5E5E5E5E-5555-5555-5555-555555555555}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApimonRelay", "ApimonRelay\ApimonRelay.csproj", "{6F6F6F6F-6666-6666-6666-666666666666}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -44,5 +46,9 @@ Global
 		{5E5E5E5E-5555-5555-5555-555555555555}.Debug|x64.Build.0 = Debug|x64
 		{5E5E5E5E-5555-5555-5555-555555555555}.Release|x64.ActiveCfg = Release|x64
 		{5E5E5E5E-5555-5555-5555-555555555555}.Release|x64.Build.0 = Release|x64
-	EndGlobalSection
+			{6F6F6F6F-6666-6666-6666-666666666666}.Debug|x64.ActiveCfg = Debug|x64
+			{6F6F6F6F-6666-6666-6666-666666666666}.Debug|x64.Build.0 = Debug|x64
+			{6F6F6F6F-6666-6666-6666-666666666666}.Release|x64.ActiveCfg = Release|x64
+			{6F6F6F6F-6666-6666-6666-666666666666}.Release|x64.Build.0 = Release|x64
+EndGlobalSection
 EndGlobal

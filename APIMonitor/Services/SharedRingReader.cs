@@ -31,8 +31,14 @@ namespace APIMonitor.Services
         private const int SLOTS_OFFSET      = HEADER_FIXED_SIZE;
         private const int EVENTS_OFFSET     = SLOTS_OFFSET + SLOTS_BYTES;
 
-        // Event layout: ts_qpc(8) + pid(4) + tid(4) + slot_id(4) + source(4) + caller_addr(8) + 12*UINT64
-        private const int EVENT_SIZE        = 8 + 4 + 4 + 4 + 4 + 8 + 12 * 8;  // 128
+        // Event layout: ts_qpc(8) + pid(4) + tid(4) + slot_id(4) + source(4) + caller_addr(8)
+        //             + 12*UINT64 + kind(4) + call_id(4) + ret_value(8)
+        private const int EVENT_SIZE        = 8 + 4 + 4 + 4 + 4 + 8 + 12 * 8 + 4 + 4 + 8;  // 144
+        private const int OFF_KIND          = 128;
+        private const int OFF_CALLID        = 132;
+        private const int OFF_RETVAL        = 136;
+        private const int OFF_SLOTCOUNT     = 24;   // header: slot_count
+        private const uint EVKIND_RET       = 1;
 
         private readonly EventStore _store;
         private readonly uint _pid;
@@ -127,9 +133,33 @@ namespace APIMonitor.Services
                     uint  slotId = _view.ReadUInt32(evOff + 16);
                     uint  source = _view.ReadUInt32(evOff + 20);
                     ulong callerAddr = _view.ReadUInt64(evOff + 24);
-                    ulong[] args = new ulong[12];
-                    for (int k = 0; k < 12; k++)
-                        args[k] = _view.ReadUInt64(evOff + 32 + k * 8);
+                    uint  kind     = _view.ReadUInt32(evOff + OFF_KIND);
+                    uint  callId   = _view.ReadUInt32(evOff + OFF_CALLID);
+                    ulong retValue = _view.ReadUInt64(evOff + OFF_RETVAL);
+
+                    /* RET events are matched to their CALL row purely by
+                     * call_id in the ViewModel, which only holds CALL rows
+                     * that already passed the caller filter. So skip the
+                     * (relatively expensive) module resolution here entirely
+                     * and let an orphan RET fall out as a cheap dictionary
+                     * miss. This halves the per-event resolution work that
+                     * return capture would otherwise add. */
+                    if (kind == EVKIND_RET)
+                    {
+                        _store.Enqueue(new ApiEvent {
+                            Pid          = pid,
+                            Tid          = tid,
+                            TimestampQpc = tsQpc,
+                            Source       = source,
+                            Kind         = EVKIND_RET,
+                            CallId       = callId,
+                            RetValue     = retValue,
+                            CallerModule = null,
+                            Text         = null,
+                        });
+                        read_seq++;
+                        continue;
+                    }
 
                     string callerPath = (_mem != null) ? _mem.ResolveModulePath(callerAddr) : null;
 
@@ -144,6 +174,10 @@ namespace APIMonitor.Services
                         read_seq++;
                         continue;
                     }
+
+                    ulong[] args = new ulong[12];
+                    for (int k = 0; k < 12; k++)
+                        args[k] = _view.ReadUInt64(evOff + 32 + k * 8);
 
                     string mod = "?", fn = "?";
                     if (slotId < maxSlots)
@@ -163,6 +197,8 @@ namespace APIMonitor.Services
                         TimestampQpc = tsQpc,
                         Source       = source,
                         Subcategory  = 0,
+                        Kind         = 0,
+                        CallId       = callId,
                         Module       = mod,
                         Function     = fn,
                         Args         = args,

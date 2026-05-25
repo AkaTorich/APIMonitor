@@ -68,7 +68,7 @@ BOOL RingInit(void)
 
     if (g_ring->magic != APIMON_RING_MAGIC) {
         g_ring->magic              = APIMON_RING_MAGIC;
-        g_ring->version            = 1;
+        g_ring->version            = APIMON_RING_VERSION;
         g_ring->capacity           = APIMON_RING_CAPACITY;
         g_ring->max_slots          = APIMON_RING_MAX_SLOTS;
         g_ring->write_seq          = 0;
@@ -109,7 +109,28 @@ void RingRegisterSlot(UINT32 slot_id, const char *module, const char *name)
     } while (InterlockedCompareExchange(&g_ring->slot_count, (LONG)(slot_id + 1), cur) != cur);
 }
 
-void RingPush(UINT32 slot_id, ULONG_PTR caller_addr, const ULONG_PTR *args12)
+UINT32 RingPushCall(UINT32 slot_id, ULONG_PTR caller_addr, const ULONG_PTR *args12)
+{
+    if (g_ring == NULL) return 0;
+
+    LONG seq = InterlockedIncrement(&g_ring->write_seq) - 1;
+    UINT32 idx = (UINT32)seq & (APIMON_RING_CAPACITY - 1);
+
+    APIMON_RING_EVENT *e = &g_ring->events[idx];
+    e->ts_qpc       = (UINT64)__rdtsc();
+    e->pid          = g_pid;
+    e->tid          = CurrentTidFromTeb();
+    e->slot_id      = slot_id;
+    e->source       = APIMON_SOURCE_USER_API;
+    e->caller_addr  = (UINT64)caller_addr;
+    for (int i = 0; i < 12; i++) e->args[i] = (UINT64)args12[i];
+    e->kind         = APIMON_EVKIND_CALL;
+    e->call_id      = (UINT32)seq;
+    e->ret_value    = 0;
+    return (UINT32)seq;
+}
+
+void RingPushRet(UINT32 slot_id, ULONG_PTR caller_addr, UINT32 call_id, ULONG_PTR ret_value)
 {
     if (g_ring == NULL) return;
 
@@ -123,5 +144,15 @@ void RingPush(UINT32 slot_id, ULONG_PTR caller_addr, const ULONG_PTR *args12)
     e->slot_id      = slot_id;
     e->source       = APIMON_SOURCE_USER_API;
     e->caller_addr  = (UINT64)caller_addr;
-    for (int i = 0; i < 12; i++) e->args[i] = (UINT64)args12[i];
+    for (int i = 0; i < 12; i++) e->args[i] = 0;
+    e->kind         = APIMON_EVKIND_RET;
+    e->call_id      = call_id;
+    e->ret_value    = (UINT64)ret_value;
+}
+
+BOOL RingWantRet(UINT32 slot_id)
+{
+    if (g_ring == NULL || slot_id >= APIMON_RING_MAX_SLOTS) return FALSE;
+    LONG word = g_ring->capture_ret[slot_id >> 5];
+    return (word >> (slot_id & 31)) & 1 ? TRUE : FALSE;
 }

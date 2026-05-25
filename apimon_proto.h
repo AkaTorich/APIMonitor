@@ -28,6 +28,12 @@
 #define APIMON_SOURCE_KERNEL     2u
 #define APIMON_SOURCE_WEIRD      3u   /* direct/indirect syscall detection */
 
+/* Event kind: a CALL event is written on function entry; a RET event is
+ * written on return (only for slots whose capture-return bit is set). The
+ * RET event references its CALL via call_id and carries the return value. */
+#define APIMON_EVKIND_CALL       0u
+#define APIMON_EVKIND_RET        1u
+
 #define APIMON_KSUB_PROC_CREATE  0u
 #define APIMON_KSUB_PROC_EXIT    1u
 #define APIMON_KSUB_IMAGE_LOAD   2u
@@ -74,6 +80,7 @@ typedef struct _APIMON_INJECT_REQ {
 #define APIMON_RING_MAX_SLOTS    32768
 #define APIMON_RING_MOD_LEN      40
 #define APIMON_RING_NAME_LEN     80
+#define APIMON_RING_CAPMAP_LEN   (APIMON_RING_MAX_SLOTS / 32)  /* LONGs; 1 bit/slot */
 
 #pragma pack(push, 8)
 typedef struct _APIMON_RING_SLOT {
@@ -88,8 +95,17 @@ typedef struct _APIMON_RING_EVENT {
     UINT32 slot_id;
     UINT32 source;
     UINT64 caller_addr;     /* return address from the trampoline's POV =
-                               instruction right after the call in caller */
+                               instruction right after the call in caller.
+                               For a RET event this equals the matching
+                               CALL's caller_addr, so the GUI noise filter
+                               treats both consistently. */
     UINT64 args[12];
+    /* --- v2 additions (append-only, keeps prior offsets) --- */
+    UINT32 kind;            /* APIMON_EVKIND_CALL or APIMON_EVKIND_RET */
+    UINT32 call_id;         /* CALL: its own write seq; RET: the matching
+                               CALL's call_id. Used to pair the two rows. */
+    UINT64 ret_value;       /* RET only: the function's return value
+                               (RAX / EAX, zero-extended on x86). */
 } APIMON_RING_EVENT;
 
 typedef struct _APIMON_RING_HEADER {
@@ -106,10 +122,16 @@ typedef struct _APIMON_RING_HEADER {
     UINT32 _pad;
     APIMON_RING_SLOT  slots[APIMON_RING_MAX_SLOTS];
     APIMON_RING_EVENT events[APIMON_RING_CAPACITY];
+    /* Capture-return bitmap. The GUI sets bit[slot_id] once it knows the
+     * function's return type is non-void; the Hook DLL reads it on the hot
+     * path to decide whether to hijack the return address. GUI writes,
+     * DLL only reads - no atomicity needed between them. */
+    volatile LONG     capture_ret[APIMON_RING_CAPMAP_LEN];
 } APIMON_RING_HEADER;
 #pragma pack(pop)
 
 #define APIMON_RING_MAGIC   ((UINT32)'MIPA')   /* 'APIM' little-endian */
+#define APIMON_RING_VERSION 2u
 
 /* Naming */
 #define APIMON_DEVICE_NT_NAME   L"\\Device\\APIMonitorDrv"
