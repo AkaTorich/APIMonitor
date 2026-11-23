@@ -119,8 +119,10 @@ namespace APIMonitor.Services
 
         private static byte[] BuildEnvironmentBlock(string pipeName)
         {
+            // The Hook DLL publishes events through the shared ring, not a pipe,
+            // so there is no transport variable to inject anymore - the target
+            // just inherits our environment.
             var env = Environment.GetEnvironmentVariables();
-            env[ApimonProto.PIPE_ENV_NAME] = pipeName;
 
             var sb = new StringBuilder();
             foreach (DictionaryEntry kv in env)

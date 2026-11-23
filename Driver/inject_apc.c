@@ -58,7 +58,10 @@ NTKERNELAPI BOOLEAN NTAPI KeInsertQueueApc(
     _In_opt_ PVOID SystemArgument2,
     _In_     KPRIORITY Increment);
 
-NTKERNELAPI VOID NTAPI KeTestAlertThread(_In_ KPROCESSOR_MODE AlertMode);
+/* Alert a SPECIFIC thread (the target's), so its next alertable wait drains
+ * the queued user-mode APC. KeTestAlertThread would only alert the CURRENT
+ * (caller's) thread, which is our IOCTL thread - the wrong one. */
+NTKERNELAPI BOOLEAN NTAPI KeAlertThread(_Inout_ PKTHREAD Thread, _In_ KPROCESSOR_MODE AlertMode);
 
 #define APIMON_INJECT_TAG  'jIPA'
 
@@ -191,9 +194,10 @@ NTSTATUS InjectDllViaApc(ULONG pid, ULONG tid, PVOID llAddr, PCWSTR dllPath)
         return STATUS_UNSUCCESSFUL;
     }
 
-    /* 4. Force an alert so the thread picks up the APC at its next alertable
-     * point (e.g. NtTestAlert / WaitForSingleObjectEx). */
-    KeTestAlertThread(UserMode);
+    /* 4. Alert the TARGET thread so it picks up the APC at its next alertable
+     * point (e.g. NtTestAlert / WaitForSingleObjectEx). For an initially
+     * suspended target the first ResumeThread fires it regardless. */
+    KeAlertThread((PKTHREAD)thread, UserMode);
 
     ObDereferenceObject(thread);
     /* proc stays referenced; ctx->proc owns it; freed in ApcKernelRoutine/Rundown. */

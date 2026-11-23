@@ -23,6 +23,9 @@ mono_crash.*
 [Rr]elease/
 [Rr]eleases/
 
+# Assembled distribution packages (vm/host) - build output, not source
+dist/
+
 [Dd]ebug/x64/
 [Dd]ebugPublic/x64/
 [Rr]elease/x64/

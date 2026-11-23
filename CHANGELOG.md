@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.1
+
+Correctness and robustness pass (no interface changes).
+
+### Event ring (protocol v3)
+- **Fixed torn events.** The hook used to publish a slot (bump `write_seq`) *before* filling it, so the reader could read a half-written event (garbage args / wrong name). Writers now reserve via a separate `reserve_seq`, fill the slot, and publish in order — the reader never sees an incomplete slot.
+- **Fixed event timestamps.** Events carry a raw `__rdtsc()` stamp, but the GUI was dividing it by the QPC frequency against a QPC baseline — different unit and epoch, so the Time column was meaningless. The ring header now carries a measured TSC base and rate (`tsc0` / `tsc_hz`, calibrated once at init); times are converted to seconds at the source and are correct locally and over the relay.
+- **Ring overflow is surfaced, not silent.** If the writer laps the reader, the reader now skips the overwritten region (so it never reads a stale slot) and counts the loss into Dropped.
+
+### GUI / services
+- **Stop now releases the per-run readers** (ring / target-memory / weird-syscall). They used to keep polling a dead pid until the next launch or app exit.
+- **Search no longer rebuilds the whole visible list every 50 ms tick** under load — the rebuild is coalesced (~5×/sec, with a trailing flush).
+- **Remote string length is bounds-checked** before allocation, so a corrupt or hostile peer can't make the relay or GUI allocate wildly.
+- Removed the dead named-pipe transport (`PipeServer`) and the unused `APIMON_PIPE` environment variable; the ring replaced it two versions ago.
+
+### Hook / driver
+- x86 return-capture gate copies up to 32 dword arguments (was 24).
+- Driver APC injection now alerts the **target** thread (`KeAlertThread`) instead of the caller's thread (`KeTestAlertThread`), so the APC is delivered to a running target.
+- The kernel-APC fallback is used only for x64 targets; for a WoW64 target the x64 `LoadLibraryW` address it used was wrong, so it no longer attempts it.
+
+### Build
+- Vendored the MinHook sources into `Hook/minhook` (the repo previously recorded it as an empty/dangling submodule, so a fresh clone wouldn't build).
+
 ## 2.0
 
 Major update: return-value capture, remote monitoring through a relay, and a reworked interface.

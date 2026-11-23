@@ -38,7 +38,12 @@ namespace APIMonitor.Services
                 Debug.WriteLine("User-mode injection failed: " + userEx.Message);
 
                 // 2. Fall back to kernel APC injection through the driver.
-                if (driver != null && driver.IsOpen)
+                //    Only for x64 targets: the APC's NormalRoutine is LoadLibraryW
+                //    resolved from OUR (x64) kernel32, which is the right VA only
+                //    for a 64-bit target. A WoW64 target has a different 32-bit
+                //    kernel32 base, so the driver path would jump to a bogus
+                //    address - don't attempt it, surface the user-mode error.
+                if (driver != null && driver.IsOpen && targetIs64Bit)
                 {
                     try
                     {

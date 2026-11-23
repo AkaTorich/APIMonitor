@@ -40,6 +40,13 @@ namespace APIMonitor.Services
         private const int OFF_SLOTCOUNT     = 24;   // header: slot_count
         private const uint EVKIND_RET       = 1;
 
+        // v3 header tail (append-only; sits after the capture_ret bitmap):
+        //   reserve_seq(4) + _pad3(4) + tsc0(8) + tsc_hz(8)
+        private const int  CAPMAP_LEN    = MAX_SLOTS / 32;                       // 1024 LONGs
+        private static readonly long CAPMAP_OFFSET = (long)EVENTS_OFFSET + (long)CAPACITY * EVENT_SIZE;
+        private static readonly long OFF_TSC0  = CAPMAP_OFFSET + CAPMAP_LEN * 4 + 8;
+        private static readonly long OFF_TSCHZ = OFF_TSC0 + 8;
+
         private readonly EventStore _store;
         private readonly uint _pid;
         private readonly TargetMemoryReader _mem;
@@ -111,10 +118,14 @@ namespace APIMonitor.Services
                 }
             }
 
-            // Snapshot capacity / max_slots from header.
+            // Snapshot capacity / max_slots / time base from header.
             int capacity  = _view.ReadInt32(8);
             int maxSlots  = _view.ReadInt32(12);
             if (capacity <= 0 || (capacity & (capacity - 1)) != 0) capacity = CAPACITY;
+
+            ulong tsc0   = _view.ReadUInt64(OFF_TSC0);
+            ulong tscHz  = _view.ReadUInt64(OFF_TSCHZ);
+            double tscHzD = tscHz > 0 ? (double)tscHz : 0.0;
 
             byte[] modBuf  = new byte[MOD_LEN];
             byte[] nameBuf = new byte[NAME_LEN];
@@ -122,12 +133,25 @@ namespace APIMonitor.Services
             while (!ct.IsCancellationRequested)
             {
                 int writeSeq = _view.ReadInt32(16);    // offsetof(write_seq)
+
+                // Ring lapped us: the writer wrapped past unread slots. Skip the
+                // overwritten region (so we never read a torn slot) and surface
+                // the loss instead of silently showing garbage.
+                int behind = writeSeq - read_seq;
+                if (behind > capacity)
+                {
+                    int lost = behind - capacity;
+                    _store.AddRingDropped(lost);
+                    read_seq += lost;
+                }
+
                 while (read_seq < writeSeq)
                 {
                     int idx = read_seq & (capacity - 1);
                     long evOff = EVENTS_OFFSET + (long)idx * EVENT_SIZE;
 
                     ulong tsQpc  = _view.ReadUInt64(evOff + 0);
+                    double secs  = tscHzD > 0 ? (double)((long)(tsQpc - tsc0)) / tscHzD : 0.0;
                     uint  pid    = _view.ReadUInt32(evOff + 8);
                     uint  tid    = _view.ReadUInt32(evOff + 12);
                     uint  slotId = _view.ReadUInt32(evOff + 16);
@@ -150,6 +174,7 @@ namespace APIMonitor.Services
                             Pid          = pid,
                             Tid          = tid,
                             TimestampQpc = tsQpc,
+                            Seconds      = secs,
                             Source       = source,
                             Kind         = EVKIND_RET,
                             CallId       = callId,
@@ -195,6 +220,7 @@ namespace APIMonitor.Services
                         Pid          = pid,
                         Tid          = tid,
                         TimestampQpc = tsQpc,
+                        Seconds      = secs,
                         Source       = source,
                         Subcategory  = 0,
                         Kind         = 0,

@@ -209,11 +209,11 @@ __declspec(naked) static void GateX86(void)
         jz   tail
 
         ; ===== capture path: copy args, call original, measure pop =====
-        sub  esp, 96
+        sub  esp, 128
         cld
         mov  edi, esp
         lea  esi, [ebp+8]
-        mov  ecx, 24
+        mov  ecx, 32              ; copy up to 32 dword args (was 24)
         rep  movsd
         mov  ebx, esp             ; arg-copy base (nonvol; survives the call)
 

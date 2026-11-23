@@ -67,13 +67,40 @@ BOOL RingInit(void)
     }
 
     if (g_ring->magic != APIMON_RING_MAGIC) {
-        g_ring->magic              = APIMON_RING_MAGIC;
+        /* Fill everything, measure the TSC rate, and publish `magic` LAST so a
+         * reader never sees the header half-initialised. */
         g_ring->version            = APIMON_RING_VERSION;
         g_ring->capacity           = APIMON_RING_CAPACITY;
         g_ring->max_slots          = APIMON_RING_MAX_SLOTS;
         g_ring->write_seq          = 0;
+        g_ring->reserve_seq        = 0;
         g_ring->slot_count         = 0;
         g_ring->dropped_seq_floor  = 0;
+
+        /* Calibrate ticks->seconds. Safe here: hooks are not installed yet
+         * (RingInit runs before HooksInstall/Enable in DllMain), so these QPC
+         * calls hit the real functions, not our trampolines. */
+        {
+            LARGE_INTEGER f, q0, q1;
+            unsigned __int64 t0, t1;
+            g_ring->tsc0   = (UINT64)__rdtsc();
+            g_ring->tsc_hz = 0;
+            if (g_imp.pQueryPerformanceFrequency(&f) && f.QuadPart > 0) {
+                g_imp.pQueryPerformanceCounter(&q0);
+                t0 = __rdtsc();
+                /* spin ~2 ms measured by QPC */
+                do { g_imp.pQueryPerformanceCounter(&q1); }
+                while ((q1.QuadPart - q0.QuadPart) < f.QuadPart / 500);
+                t1 = __rdtsc();
+                g_ring->tsc0 = t0;
+                if (q1.QuadPart > q0.QuadPart)
+                    g_ring->tsc_hz = (UINT64)((double)(t1 - t0) * (double)f.QuadPart
+                                              / (double)(q1.QuadPart - q0.QuadPart));
+            }
+        }
+
+        _WriteBarrier();
+        g_ring->magic = APIMON_RING_MAGIC;
     }
     return TRUE;
 }
@@ -109,12 +136,21 @@ void RingRegisterSlot(UINT32 slot_id, const char *module, const char *name)
     } while (InterlockedCompareExchange(&g_ring->slot_count, (LONG)(slot_id + 1), cur) != cur);
 }
 
+/* Publish in reservation order: advance write_seq to our index only once the
+ * predecessor has published, so the reader (which reads events up to write_seq)
+ * never observes a slot that is still being written. */
+static __forceinline void RingPublish(LONG my)
+{
+    while (InterlockedCompareExchange(&g_ring->write_seq, my + 1, my) != my)
+        _mm_pause();
+}
+
 UINT32 RingPushCall(UINT32 slot_id, ULONG_PTR caller_addr, const ULONG_PTR *args12)
 {
     if (g_ring == NULL) return 0;
 
-    LONG seq = InterlockedIncrement(&g_ring->write_seq) - 1;
-    UINT32 idx = (UINT32)seq & (APIMON_RING_CAPACITY - 1);
+    LONG my = InterlockedIncrement(&g_ring->reserve_seq) - 1;
+    UINT32 idx = (UINT32)my & (APIMON_RING_CAPACITY - 1);
 
     APIMON_RING_EVENT *e = &g_ring->events[idx];
     e->ts_qpc       = (UINT64)__rdtsc();
@@ -125,17 +161,19 @@ UINT32 RingPushCall(UINT32 slot_id, ULONG_PTR caller_addr, const ULONG_PTR *args
     e->caller_addr  = (UINT64)caller_addr;
     for (int i = 0; i < 12; i++) e->args[i] = (UINT64)args12[i];
     e->kind         = APIMON_EVKIND_CALL;
-    e->call_id      = (UINT32)seq;
+    e->call_id      = (UINT32)my;
     e->ret_value    = 0;
-    return (UINT32)seq;
+
+    RingPublish(my);
+    return (UINT32)my;
 }
 
 void RingPushRet(UINT32 slot_id, ULONG_PTR caller_addr, UINT32 call_id, ULONG_PTR ret_value)
 {
     if (g_ring == NULL) return;
 
-    LONG seq = InterlockedIncrement(&g_ring->write_seq) - 1;
-    UINT32 idx = (UINT32)seq & (APIMON_RING_CAPACITY - 1);
+    LONG my = InterlockedIncrement(&g_ring->reserve_seq) - 1;
+    UINT32 idx = (UINT32)my & (APIMON_RING_CAPACITY - 1);
 
     APIMON_RING_EVENT *e = &g_ring->events[idx];
     e->ts_qpc       = (UINT64)__rdtsc();
@@ -148,6 +186,8 @@ void RingPushRet(UINT32 slot_id, ULONG_PTR caller_addr, UINT32 call_id, ULONG_PT
     e->kind         = APIMON_EVKIND_RET;
     e->call_id      = call_id;
     e->ret_value    = (UINT64)ret_value;
+
+    RingPublish(my);
 }
 
 BOOL RingWantRet(UINT32 slot_id)

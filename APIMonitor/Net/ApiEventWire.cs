@@ -16,7 +16,10 @@ namespace APIMonitor.Net
     public static class ApiEventWire
     {
         // Bumped if the layout changes; sent once right after connect.
-        public const int ProtocolVersion = 2;
+        public const int ProtocolVersion = 3;
+
+        // Sanity cap so a corrupt or hostile peer can't make us allocate wildly.
+        public const int MaxStringBytes = 16 * 1024 * 1024;
 
         // Command byte the GUI sends after the version. The relay loops on
         // these until the connection closes (LAUNCH is terminal - it then
@@ -36,6 +39,8 @@ namespace APIMonitor.Net
         {
             int len = r.ReadInt32();
             if (len < 0) return null;
+            if (len > MaxStringBytes)
+                throw new InvalidDataException("ApiEventWire: string length " + len + " exceeds cap");
             byte[] b = r.ReadBytes(len);
             return Encoding.UTF8.GetString(b);
         }
@@ -45,6 +50,7 @@ namespace APIMonitor.Net
             w.Write(e.Pid);
             w.Write(e.Tid);
             w.Write(e.TimestampQpc);
+            w.Write(e.Seconds);
             w.Write(e.Source);
             w.Write(e.Subcategory);
             w.Write(e.Kind);
@@ -74,6 +80,7 @@ namespace APIMonitor.Net
                 Pid          = r.ReadUInt32(),
                 Tid          = r.ReadUInt32(),
                 TimestampQpc = r.ReadUInt64(),
+                Seconds      = r.ReadDouble(),
                 Source       = r.ReadUInt32(),
                 Subcategory  = r.ReadUInt32(),
                 Kind         = r.ReadUInt32(),

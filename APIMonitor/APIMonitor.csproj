@@ -125,7 +125,6 @@
     <Compile Include="ViewModel\MainViewModel.cs" />
     <Compile Include="ViewModel\RelayCommand.cs" />
     <Compile Include="Net\ApiEventWire.cs" />
-    <Compile Include="Services\PipeServer.cs" />
     <Compile Include="Services\RemoteClient.cs" />
     <Compile Include="Services\RemoteBrowserClient.cs" />
     <Compile Include="Services\SharedRingReader.cs" />

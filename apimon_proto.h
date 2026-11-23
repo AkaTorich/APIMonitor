@@ -127,11 +127,23 @@ typedef struct _APIMON_RING_HEADER {
      * path to decide whether to hijack the return address. GUI writes,
      * DLL only reads - no atomicity needed between them. */
     volatile LONG     capture_ret[APIMON_RING_CAPMAP_LEN];
+    /* --- v3 additions (append-only; every prior offset is unchanged) --- */
+    /* Slot allocator. A writer reserves a slot with InterlockedIncrement on
+     * reserve_seq, fills the event, then publishes by advancing write_seq to
+     * its own index IN ORDER - so a reader that reads up to write_seq never
+     * sees a half-written slot. */
+    volatile LONG     reserve_seq;
+    UINT32            _pad3;
+    /* Time base. The hot path stamps events with raw __rdtsc(); these let the
+     * reader convert ticks to seconds: secs = (ts - tsc0) / tsc_hz. tsc_hz is
+     * measured once at ring init (0 = not calibrated -> reader shows 0). */
+    UINT64            tsc0;
+    UINT64            tsc_hz;
 } APIMON_RING_HEADER;
 #pragma pack(pop)
 
 #define APIMON_RING_MAGIC   ((UINT32)'MIPA')   /* 'APIM' little-endian */
-#define APIMON_RING_VERSION 2u
+#define APIMON_RING_VERSION 3u
 
 /* Naming */
 #define APIMON_DEVICE_NT_NAME   L"\\Device\\APIMonitorDrv"

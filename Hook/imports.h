@@ -35,6 +35,7 @@ typedef DWORD  (WINAPI *PFN_GetCurrentProcessId)(VOID);
 typedef DWORD  (WINAPI *PFN_GetCurrentThreadId)(VOID);
 typedef HANDLE (WINAPI *PFN_GetCurrentProcess)(VOID);
 typedef BOOL   (WINAPI *PFN_QueryPerformanceCounter)(LARGE_INTEGER *);
+typedef BOOL   (WINAPI *PFN_QueryPerformanceFrequency)(LARGE_INTEGER *);
 
 typedef DWORD  (WINAPI *PFN_GetLastError)(VOID);
 
@@ -79,6 +80,7 @@ typedef struct _APIMON_IMPORTS {
     PFN_GetCurrentThreadId          pGetCurrentThreadId;
     PFN_GetCurrentProcess           pGetCurrentProcess;
     PFN_QueryPerformanceCounter     pQueryPerformanceCounter;
+    PFN_QueryPerformanceFrequency   pQueryPerformanceFrequency;
 
     PFN_GetLastError                pGetLastError;
 

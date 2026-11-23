@@ -12,6 +12,7 @@ namespace APIMonitor.Model
         public uint   Pid;
         public uint   Tid;
         public ulong  TimestampQpc;
+        public double Seconds;           // seconds since target start (converted from the ring's TSC base)
         public uint   Source;
         public uint   Subcategory;
         public uint   Kind;              // 0 = CALL, 1 = RET (see apimon_proto.h)

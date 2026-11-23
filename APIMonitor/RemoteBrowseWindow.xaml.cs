@@ -62,7 +62,7 @@ namespace APIMonitor
             return cur + "\\" + name;
         }
 
-        private static string Parent(string cur)
+        private static string ParentDir(string cur)
         {
             if (string.IsNullOrEmpty(cur)) return string.Empty;
             string t = cur.TrimEnd('\\');
@@ -83,7 +83,7 @@ namespace APIMonitor
 
         private void List_DoubleClick(object sender, MouseButtonEventArgs e) => OpenSelected();
         private void Open_Click(object sender, RoutedEventArgs e)            => OpenSelected();
-        private void Up_Click(object sender, RoutedEventArgs e)              => Navigate(Parent(_cur));
+        private void Up_Click(object sender, RoutedEventArgs e)              => Navigate(ParentDir(_cur));
         private void Cancel_Click(object sender, RoutedEventArgs e)          { DialogResult = false; Close(); }
         private void Close_Click(object sender, RoutedEventArgs e)           { DialogResult = false; Close(); }
     }

@@ -41,6 +41,7 @@ BOOL ImpResolve(void)
     R_K32(GetCurrentThreadId);
     R_K32(GetCurrentProcess);
     R_K32(QueryPerformanceCounter);
+    R_K32(QueryPerformanceFrequency);
 
     R_K32(GetLastError);
 

@@ -126,8 +126,6 @@ namespace APIMonitor.ViewModel
         private DriverClient     _driverClient;
         private Launcher         _launcher;
         private DispatcherTimer  _drainTimer;
-        private long             _qpcStart;
-        private double           _qpcFreq;
         private int              _nextIndex;
         private string           _baseDir;
         private Win32MetadataResolver _winmd;
@@ -141,9 +139,9 @@ namespace APIMonitor.ViewModel
             _ownerWindow = owner;
             _baseDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
-            NativeMethods.QueryPerformanceFrequency(out long freq);
-            _qpcFreq = freq;
-            NativeMethods.QueryPerformanceCounter(out _qpcStart);
+            // Event times now come pre-converted to seconds from each target's own
+            // TSC base (see SharedRingReader / apimon_proto.h), so there is no
+            // GUI-side QPC baseline to capture here anymore.
 
             _store = new EventStore();
 
@@ -303,6 +301,7 @@ namespace APIMonitor.ViewModel
             {
                 try { _remoteClient?.Dispose(); _remoteClient = null; } catch { }
                 try { _launcher?.TryTerminate(); } catch { }
+                StopLocalReaders();
                 StatusText = "Stopped.";
                 IsRunning = false;
             }
@@ -394,6 +393,7 @@ namespace APIMonitor.ViewModel
                     while (!_launcher.TryWaitExit(500, out exitCode)) { }
                     Application.Current?.Dispatcher.Invoke(() =>
                     {
+                        StopLocalReaders();
                         IsRunning = false;
                         StatusText = "Target exited (code=" + exitCode + ").";
                     });
@@ -404,6 +404,19 @@ namespace APIMonitor.ViewModel
                 MessageBox.Show(_ownerWindow, "Launch failed:\n" + ex.Message, "APIMonitor",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        // Tear down the per-run background readers. Without this, Stop (or a
+        // target exit) left the ring/memory/syscall pollers spinning on a dead
+        // pid until the next launch or app shutdown.
+        private void StopLocalReaders()
+        {
+            try { _ringReader?.Dispose();   } catch { }
+            try { _weirdDetector?.Dispose(); } catch { }
+            try { _memReader?.Dispose();    } catch { }
+            _ringReader    = null;
+            _weirdDetector = null;
+            _memReader     = null;
         }
 
         private void DoClear()
@@ -444,6 +457,10 @@ namespace APIMonitor.ViewModel
         private const int RetentionCap  = 400_000;
         private const int RetentionKeep = 200_000;
 
+        // Search-rebuild coalescing (see OnDrainTick).
+        private int  _lastSearchRebuild;
+        private bool _searchDirty;
+
         private void OnDrainTick(object sender, EventArgs e)
         {
             if (_store == null) return;
@@ -468,8 +485,7 @@ namespace APIMonitor.ViewModel
                     continue;
                 }
 
-                double secs = (ev.TimestampQpc - (ulong)_qpcStart) / _qpcFreq;
-                var vm = new ApiEventVm(_nextIndex++, ev, secs, _winmd, _memReader);
+                var vm = new ApiEventVm(_nextIndex++, ev, ev.Seconds, _winmd, _memReader);
                 _allEvents.Add(vm);
 
                 /* Only real API CALL rows can receive a RET. Text/driver
@@ -493,8 +509,16 @@ namespace APIMonitor.ViewModel
             // add incrementally for a live feel.
             if (_searchText.Length > 0)
             {
-                if (drained > 0)
+                // A full re-scan (up to RetentionCap rows) every 50 ms tick froze
+                // the UI under load. Coalesce: rebuild at most ~5x/sec, and always
+                // flush the final state within one window of the last event.
+                if (drained > 0) _searchDirty = true;
+                if (_searchDirty && Environment.TickCount - _lastSearchRebuild >= 200)
+                {
                     RebuildVisible();
+                    _lastSearchRebuild = Environment.TickCount;
+                    _searchDirty = false;
+                }
             }
             else if (_drainBatch.Count > 0)
             {

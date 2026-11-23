@@ -30,6 +30,13 @@ namespace APIMonitor.Model
             Interlocked.Increment(ref _totalCount);
         }
 
+        /// <summary>Record events the Hook DLL overwrote in its ring before the
+        /// reader got to them (ring lapped). Surfaced via DroppedCount.</summary>
+        public void AddRingDropped(long n)
+        {
+            if (n > 0) Interlocked.Add(ref _droppedCount, n);
+        }
+
         public bool TryDequeue(out ApiEvent ev) => _queue.TryDequeue(out ev);
 
         public int CurrentBuffered => _queue.Count;
