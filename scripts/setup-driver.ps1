@@ -57,7 +57,7 @@ function Install-Driver {
         return $true
     }
     Write-Host "Service did not start (state: $state)." -ForegroundColor Red
-    Write-Host "Run check-environment.ps1 - it shows what blocks the load." -ForegroundColor Yellow
+    Write-Host "Check the VM: Secure Boot / HVCI (Memory Integrity) / Test Mode must be off/on accordingly." -ForegroundColor Yellow
     return $false
 }
 
