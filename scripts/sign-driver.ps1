@@ -13,11 +13,16 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Split-Path -Parent $ScriptDir
-$SysPath   = Join-Path $RepoRoot "bin\$Configuration\APIMonitorDrv.sys"
+# Works from the repo (bin\Release\) or from a packaged folder (.sys beside scripts\).
+$SysPath = @(
+    (Join-Path $RepoRoot "bin\$Configuration\APIMonitorDrv.sys"),
+    (Join-Path $RepoRoot "APIMonitorDrv.sys"),
+    (Join-Path $ScriptDir "APIMonitorDrv.sys")
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-if (-not (Test-Path $SysPath)) {
-    Write-Host "Driver file not found: $SysPath" -ForegroundColor Red
-    Write-Host "Build the solution first (Build -> Build Solution)." -ForegroundColor Yellow
+if (-not $SysPath) {
+    Write-Host "Driver file not found next to the script or in bin\$Configuration." -ForegroundColor Red
+    Write-Host "Build the solution first, or run this from the packaged folder." -ForegroundColor Yellow
     exit 1
 }
 

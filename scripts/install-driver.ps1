@@ -12,12 +12,20 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Split-Path -Parent $ScriptDir
-$SrcSys    = Join-Path $RepoRoot "bin\$Configuration\APIMonitorDrv.sys"
 $DstDir    = Join-Path $env:SystemRoot "System32\drivers"
 $DstSys    = Join-Path $DstDir "APIMonitorDrv.sys"
 
-if (-not (Test-Path $SrcSys)) {
-    Write-Host "Driver file not found: $SrcSys" -ForegroundColor Red
+# Find the driver whether we run from the repo (bin\Release\) or from a packaged
+# folder (the .sys sits next to this scripts\ folder, or inside it).
+$candidates = @(
+    (Join-Path $RepoRoot "bin\$Configuration\APIMonitorDrv.sys"),
+    (Join-Path $RepoRoot "APIMonitorDrv.sys"),
+    (Join-Path $ScriptDir "APIMonitorDrv.sys")
+)
+$SrcSys = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $SrcSys) {
+    Write-Host "Driver file not found. Looked in:" -ForegroundColor Red
+    $candidates | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
     exit 1
 }
 

@@ -156,6 +156,14 @@
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"/>
             </Grid>
 
+            <!-- Visibility row -->
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <CheckBox Content="Show system calls"
+                          VerticalAlignment="Center"
+                          IsChecked="{Binding ShowSystemCalls}"
+                          ToolTip="Show calls made from system DLLs (System32/SysWOW64/CRT) too. Off = only calls from the target's own modules. Affects events captured after it is toggled."/>
+            </StackPanel>
+
             <!-- Remote relay row -->
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                 <CheckBox Content="Remote"

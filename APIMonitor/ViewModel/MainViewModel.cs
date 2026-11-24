@@ -84,6 +84,23 @@ namespace APIMonitor.ViewModel
             }
         }
 
+        // Show calls from system DLLs too (bypasses the caller noise filter in
+        // SharedRingReader). Off by default = only the target's own calls.
+        private bool _showSystemCalls;
+        public  bool ShowSystemCalls
+        {
+            get => _showSystemCalls;
+            set
+            {
+                if (_showSystemCalls != value)
+                {
+                    _showSystemCalls = value;
+                    SharedRingReader.ShowSystemCalls = value;
+                    OnChanged();
+                }
+            }
+        }
+
         private bool _isRunning;
         public  bool IsRunning
         {

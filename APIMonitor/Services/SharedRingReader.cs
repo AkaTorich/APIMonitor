@@ -47,6 +47,12 @@ namespace APIMonitor.Services
         private static readonly long OFF_TSC0  = CAPMAP_OFFSET + CAPMAP_LEN * 4 + 8;
         private static readonly long OFF_TSCHZ = OFF_TSC0 + 8;
 
+        // When true, the caller-module noise filter is bypassed: calls coming from
+        // system DLLs (System32/SysWOW64/WinSxS/CRT) and calls with an unresolved
+        // caller are kept too, so the grid shows every hooked API, not only those
+        // originating in the target's own modules. Toggled live from the GUI.
+        public static volatile bool ShowSystemCalls;
+
         private readonly EventStore _store;
         private readonly uint _pid;
         private readonly TargetMemoryReader _mem;
@@ -194,7 +200,7 @@ namespace APIMonitor.Services
                      * couldn't resolve), and everything that DID resolve
                      * to a noise module. Net result: only calls coming
                      * from the target's own modules survive. */
-                    if (string.IsNullOrEmpty(callerPath) || IsNoiseCaller(callerPath))
+                    if (!ShowSystemCalls && (string.IsNullOrEmpty(callerPath) || IsNoiseCaller(callerPath)))
                     {
                         read_seq++;
                         continue;

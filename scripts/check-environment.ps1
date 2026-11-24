@@ -68,8 +68,12 @@ if ($hl -match "Auto") {
 # 4. Driver file + signature
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Split-Path -Parent $ScriptDir
-$SysPath   = Join-Path $RepoRoot "bin\Release\APIMonitorDrv.sys"
-if (Test-Path $SysPath) {
+$SysPath = @(
+    (Join-Path $RepoRoot "bin\Release\APIMonitorDrv.sys"),
+    (Join-Path $RepoRoot "APIMonitorDrv.sys"),
+    (Join-Path $ScriptDir "APIMonitorDrv.sys")
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($SysPath) {
     $sig = Get-AuthenticodeSignature $SysPath
     Write-Host "[?]   Driver: $SysPath" -ForegroundColor Cyan
     Write-Host "      Signature status: $($sig.Status)" -ForegroundColor Cyan
